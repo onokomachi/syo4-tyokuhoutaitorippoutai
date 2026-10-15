@@ -2,7 +2,7 @@
  * 作図・選択の答えの採点（純粋関数）。正しければ note は null。
  * まちがいには、よくある まちがいに合わせた ひとことを返す（答えは言わない）。
  */
-import type { MultiStep, PaintStep, SketchStep, DashStep, PointStep } from './question';
+import type { MultiStep, PaintStep, SketchStep, DashStep, PointStep, EdgesStep } from './question';
 import { cellsOf, cellKey, piecesOf, stripStyle, hiddenEdges, edgeName, type Seg, type Pt } from './solid';
 
 export interface Graded { ok: boolean; note: string | null }
@@ -65,3 +65,25 @@ export function gradePoint(s: PointStep, p: Pt): Graded {
 
 /** 見えない辺（見取図）の名前 */
 export const hiddenEdgeNames = (view: 'right' | 'left'): string[] => hiddenEdges(view).map(edgeName);
+
+/** 辺の名前は、文字を並べかえても同じ辺（EH と HE）。小さい順にそろえる */
+export const canonEdgeName = (n: string): string => [...n].sort().join('');
+
+/**
+ * 組み立てた辺（'EH' や 'HE'。順番もリストの並びも問わない）を採点する。
+ * 同じ辺を2回入れても1本として数える。正解の組なら診断は反応しない。
+ */
+export function gradeEdges(s: EdgesStep, picked: string[]): Graded {
+  const got = [...new Set(picked.map(canonEdgeName))].sort();
+  const want = [...new Set(s.correct.map(canonEdgeName))].sort();
+  if (got.length === want.length && got.every((x, i) => x === want[i])) return OK;
+  const custom = s.diagnose?.(got);
+  if (custom) return { ok: false, note: custom };
+  const extra = got.filter((x) => !want.includes(x)).length;
+  const lack = want.filter((x) => !got.includes(x)).length;
+  if (want.length > 1) {
+    if (extra === 0 && lack > 0) return { ok: false, note: `書いた 辺は あっているよ。でも まだ あるよ（ぜんぶで ${want.length}本）。` };
+    if (lack === 0) return { ok: false, note: 'あてはまらない 辺が まじって いるよ。1本ずつ たしかめよう。' };
+  }
+  return { ok: false, note: null };
+}

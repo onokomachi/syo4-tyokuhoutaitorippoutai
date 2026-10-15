@@ -11,6 +11,8 @@
  *   dash   … 見取図の見えない辺を、タップして点線にする
  *   point  … 平面の点の位置。格子点をタップして点をかく
  *   multi  … 「全部書きましょう」。あてはまるものを全部えらぶ
+ *   edges  … 辺を答える問い。図の頂点の文字を2つタップして「辺○○」を組み立てる（EH と HE は同じ辺）。
+ *            練習では2回まちがえたら足場（scaffold＝えらぶ形）を出す。本番テスト・実力の階段は組み立てだけ。
  */
 import type { ScratchOp } from 'learning-app-kit/react';
 import type { Dims, FaceId, Rect, Seg, Pt } from './solid';
@@ -166,7 +168,25 @@ export interface PointStep extends StepBase {
   diagnose?: (p: Pt) => string | null;
 }
 
-export type Step = NumStep | ChoiceStep | MultiStep | PaintStep | SketchStep | DashStep | PointStep;
+/**
+ * 辺を、頂点の文字を2つタップして組み立てて答える（紙の「辺ADに平行な辺を全部書きましょう」と同じ形）。
+ * 辺の名前は文字を並べかえても同じ辺（EH と HE）。リストの順番も問わない。
+ */
+export interface EdgesStep extends StepBase {
+  kind: 'edges';
+  /** 図に出ている頂点の文字（ここだけを出す。ダミーは混ぜない） */
+  letters: string[];
+  /** 図にある本当の辺（文字を並べかえて小さい順にした名前。'EH'）。これに無い組は足せない */
+  edges: string[];
+  /** 正解の辺（同じ形の名前）。1本なら答えを1本だけ組み立てる */
+  correct: string[];
+  /** 組み立てた辺の組へのひとこと。正解の組では必ず null を返すこと（名前は小さい順にした形で渡す） */
+  diagnose?: (picked: string[]) => string | null;
+  /** 足場。練習で2回まちがえたら出す、いまの「えらぶ」形（本番テスト・実力の階段では出さない） */
+  scaffold: MultiStep | ChoiceStep;
+}
+
+export type Step = NumStep | ChoiceStep | MultiStep | EdgesStep | PaintStep | SketchStep | DashStep | PointStep;
 
 /* ------------------------------------------------------------------ */
 /* 問題                                                                  */

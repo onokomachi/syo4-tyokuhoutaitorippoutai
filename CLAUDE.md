@@ -13,6 +13,9 @@
 - `npm run verify`（`scripts/verify-problems.ts`）が、形の計算そのもの（6マスの形35種のうち展開図11種）・正しい作図が○になること・
   正答で誤答診断が反応しないこと・ヒント3段・各レベル20通り以上・配点（表100／裏50）を止める。
 - **記録の名前（skillId）＝レベルID。** `kousei-*` `heiko-*` `tenkai-*` `mitori-*` `ichi-*` `katsuyo-*` `eh-*`（＋ `mock-*` `boss-*`）。名前を変えたら学級ポータルのカタログも作り直す。
+- **辺を答える問い**（`heiko-edge` `heiko-faceedge` `heiko-edgeperp` `tenkai-edge` `eh-parallel` `eh-perp` の辺の段）は、頂点の文字を2つタップして辺を組み立てる `edges` ステップ
+  （`EdgeBuilder`。EH と HE は同じ辺、リストの順番も問わない。採点は `gradeEdges`）。練習で2回まちがえたら足場（`scaffold`＝いまの「えらぶ」形）を出す。
+  本番テスト・実力の階段は足場なし。ボス戦は `toPickForm` で「えらぶ」形にもどす。verify が「正解の書き方が全部通る／ずらすと×」を数える。
 - 本番テストは紙のテスト（新学社 4年東 下巻）と同じ大問・配点。答えを1つ入れる問題は「2回まちがえたら×で次へ」、複数ステップは「わからない」で降りる。
 - 学級ポータルへの登録（kit のカタログ `rippoutai`・`apps` の1行・Vercel の環境変数）はまだ。カタログは
   `npm run catalog > ../learning-app-kit/src/catalog/rippoutai.ts` で作る（誤概念は `scripts/export-catalog.ts` に手で書く）。

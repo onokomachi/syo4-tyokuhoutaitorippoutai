@@ -14,7 +14,7 @@
  * 組み立てを計算して出す（手で書いた対応表は使わない）。
  * 記録の名前（skillId）はレベルIDと同じ文字列にする（カタログの skill_id と一致させるため）。
  */
-import type { Question, Step, ChoiceStep, NumStep, MultiStep, Figure, LabeledPt } from './question';
+import type { Question, Step, ChoiceStep, NumStep, MultiStep, EdgesStep, Figure, LabeledPt } from './question';
 import { rnd, pick, shuffle } from './question';
 import {
   randomNet, completions, randomHexomino, isCubeNet, boundaryPoints, oppositeFace, netBounds, normalizeNet, netLines,
@@ -67,6 +67,28 @@ function edgeMulti(o: { label: string; prompt: string; correct: string[]; why: s
     kind: 'multi', label: o.label, prompt: o.prompt, options, correct, why: o.why, hints: o.hints,
     diagnose: o.diagnose ? (p) => o.diagnose!(p.map((i) => (options[i] as string).slice(1))) : undefined,
   };
+}
+
+/** 辺の名前は、文字を並べかえても同じ辺（EH と HE）。小さい順にそろえた形にする */
+export const canonEdge = (n: string): string => [...n].sort().join('');
+const EDGE_STYLE = new Map(EDGES.map((e) => [canonEdge(edgeName(e)), edgeName(e)]));
+
+/**
+ * 辺を、頂点の文字を2つタップして組み立てて答える問い。
+ * 足場（scaffold）に、いまの「12本から全部えらぶ」形を持たせる（練習で2回まちがえたら出す）。
+ */
+function edgeBuild(o: Parameters<typeof edgeMulti>[0]): EdgesStep {
+  return {
+    kind: 'edges', label: o.label, prompt: o.prompt, hints: o.hints,
+    letters: [...VERTS], edges: EDGES.map((e) => canonEdge(edgeName(e))), correct: o.correct.map(canonEdge),
+    diagnose: o.diagnose ? (p) => o.diagnose!(p.map((c) => EDGE_STYLE.get(c) ?? c)) : undefined,
+    scaffold: edgeMulti(o),
+  };
+}
+
+/** 組み立てる形を、「えらぶ」形（足場）にもどす。ボス戦はこちらを使う（ボス戦は変えない決まり） */
+export function toPickForm(q: Question): Question {
+  return { ...q, steps: q.steps.map((s) => (s.kind === 'edges' ? s.scaffold : s)) };
 }
 
 const cuboidFig = (dims: Dims, view: 'right' | 'left', extra: Partial<Extract<Figure, { type: 'cuboid' }>> = {}): Figure =>
@@ -346,13 +368,18 @@ export function genHeikoEdge(): Question {
   const par = parallelEdges(e).map(edgeName);
   return {
     skillId: 'heiko-edge', title: '辺と辺の 平行', emoji: '📏',
-    text: `下の 直方体で、辺${name}に 平行な 辺を 全部 えらびましょう。`,
+    text: `下の 直方体で、辺${name}に 平行な 辺を 全部 書きましょう。`,
     figure: cuboidFig(cuboidDims('distinct'), pickView(), { letters: true, highlight: [name] }),
-    steps: [edgeMulti({
+    steps: [edgeBuild({
       label: '平行な辺', prompt: `辺${name}に 平行な 辺（全部）`, correct: par, exclude: [name],
       why: `辺${name}と 同じ 向きの 辺は 平行。直方体では、1本の 辺に 平行な 辺が 3本 あるよ。`,
       hints: ['平行な 辺は、同じ 向きで 交わらない 辺。', `辺${name}と 同じ 向きの 辺を、見えない 辺も ふくめて さがそう。`, '同じ 面の 向かいの 辺だけで なく、はなれた ところにも あるよ（全部で 3本）。'],
-      diagnose: (p) => (p.some((x) => perpendicularEdges(e).map(edgeName).includes(x)) ? `辺${name}と 交わる 辺が まじって いるよ。交わる 辺は 平行では ないよ。` : null),
+      diagnose: (p) => {
+        if (p.some((x) => canonEdge(x) === canonEdge(name))) return `辺${name}じしんは 入れないよ。辺${name}に 平行な 辺を さがそう。`;
+        if (p.some((x) => perpendicularEdges(e).map(edgeName).includes(x))) return `垂直と 平行を とりちがえて いないかな。辺${name}と 交わる 辺は 平行では ないよ。`;
+        if (p.some((x) => !par.includes(x))) return `辺${name}と 平行な 辺は、同じ 向きで むかい合って いる 辺だよ。交わらない 辺でも、向きが ちがうと 平行では ないよ。`;
+        return null;
+      },
     })],
     summary: `辺${name}に 平行な 辺は ${par.map((x) => `辺${x}`).join('・')}。`,
     label: `辺${name}に平行な辺`, q: `辺${name}に平行な辺を全部`, a: par.map((x) => `辺${x}`).join('、'),
@@ -367,9 +394,9 @@ export function genHeikoEdgePerp(): Question {
   const par = parallelEdges(e).map(edgeName);
   return {
     skillId: 'heiko-edgeperp', title: '辺と辺の 垂直', emoji: '📐',
-    text: `下の 直方体で、辺${name}に 垂直な 辺を 全部 えらびましょう。`,
+    text: `下の 直方体で、辺${name}に 垂直な 辺を 全部 書きましょう。`,
     figure: cuboidFig(cuboidDims('distinct'), pickView(), { letters: true, highlight: [name] }),
-    steps: [edgeMulti({
+    steps: [edgeBuild({
       label: '垂直な辺', prompt: `辺${name}に 垂直な 辺（全部）`, correct: per, exclude: [name],
       why: `辺${name}と 直角に 交わる 辺が 垂直。両はしの 頂点${e[0]}・${e[1]}から 2本ずつで 4本。`,
       hints: ['垂直な 辺は、直角に 交わる 辺。', `頂点${e[0]}に 集まる 辺と、頂点${e[1]}に 集まる 辺を 見よう。`, `頂点${e[0]}から 2本、頂点${e[1]}から 2本。`],
@@ -395,15 +422,20 @@ export function genHeikoFaceEdge(part: FacePart = 'all'): Question {
   const word = p === 'perp' ? '垂直' : '平行';
   return {
     skillId: 'heiko-faceedge', title: `面と辺の ${word}`, emoji: '📐',
-    text: `下の 直方体で、${fname}に ${word}な 辺を 全部 えらびましょう。`,
+    text: `下の 直方体で、${fname}に ${word}な 辺を 全部 書きましょう。`,
     figure: cuboidFig(cuboidDims('distinct'), pickView(), { letters: true, ...(useLabel ? { faceLabels: { [T]: 'あ' } } : {}), shadeFace: T }),
-    steps: [edgeMulti({
+    steps: [edgeBuild({
       label: `${word}な辺`, prompt: `${fname}に ${word}な 辺（全部）`, correct: ans,
       why: p === 'perp' ? `${fname}に 直角に 交わる 辺（面から まっすぐ 出て いる 辺）が 垂直。4本 あるよ。` : `${fname}と 向かい合う 面の まわりの 4本の 辺は、${fname}と 交わらないので 平行。`,
       hints: p === 'perp'
         ? [`${fname}から まっすぐ 出て いる 辺を さがそう。`, `${fname}の 4つの 頂点から 1本ずつ 出て いるよ。`, `${fname}の 上に ある 辺は 数えないよ。`]
         : [`${fname}と 交わらない 辺を さがそう。`, `${fname}と 向かい合う 面の 辺を 見よう。`, `${fname}の 上に ある 辺は 数えないよ。`],
-      diagnose: (pk) => (pk.some((x) => on.includes(x)) ? `${fname}の 上に ある 辺が まじって いるよ。面の 上の 辺は、垂直でも 平行でも ないよ。` : null),
+      diagnose: (pk) => {
+        if (pk.some((x) => on.includes(x))) return `${fname}の 上に ある 辺が まじって いるよ。面の 上の 辺は、垂直でも 平行でも ないよ。`;
+        const other = (p === 'perp' ? edgesParallelToFace(T) : edgesPerpToFace(T)).map(edgeName);
+        if (pk.some((x) => other.includes(x))) return `垂直と 平行を とりちがえて いないかな。${word}な 辺は ${p === 'perp' ? '面から まっすぐ 出て いる 辺' : '面と 交わらない 辺'}だよ。`;
+        return null;
+      },
     })],
     summary: `${fname}に ${word}な 辺は ${ans.map((x) => `辺${x}`).join('・')}。`,
     label: `${fname}に${word}な辺`, q: `${fname}に${word}な辺を全部`, a: ans.map((x) => `辺${x}`).join('、'),
@@ -533,26 +565,38 @@ export function genTenkaiEdge(): Question {
   const e = bp.edges[k]!;
   const m = bp.edges.findIndex((x, t) => t !== k && x.edge === e.edge);
   const f = bp.edges[m]!;
-  // 重なる辺の名前は、対応する点の順にする（エ↔ク、オ↔キ なら「辺クキ」）
-  const fa = bp.points[f.a]!, fb = bp.points[f.b]!;
+  // 重なる辺の名前は、対応する点の順にする（エ↔ク、オ↔キ なら「辺クキ」）。組み立てる答えは順番を問わない
+  const fa = bp.points[f.a]!;
   const ea = bp.points[e.a]!;
   const partnerName = fa.corner === ea.corner ? `${points[f.a]!.label}${points[f.b]!.label}` : `${points[f.b]!.label}${points[f.a]!.label}`;
-  void fb;
   const nm = (t: number) => `${points[bp.edges[t]!.a]!.label}${points[bp.edges[t]!.b]!.label}`;
   const adj = [(k + 1) % n, (k + n - 1) % n].filter((t) => t !== m);
   const others = shuffle(bp.edges.map((_, t) => t).filter((t) => t !== k && t !== m && !adj.includes(t)));
   const wrongIdx = [...adj, ...others].slice(0, 3);
   const en = nm(k);
+  const hints = [`辺${en}の 両はしの 点と、それぞれ 重なる 点を さがそう。`, '重なる 点どうしを むすんだ 辺が、重なる 辺。', '辺の 先の 面を 折り上げると、どの 辺と くっつく？'];
+  const adjNames = adj.map((t) => canonEdge(nm(t)));
+  const scaffold = choice({
+    label: '重なる辺', prompt: `辺${en}と 重なる 辺`, correct: `辺${partnerName}`,
+    wrongs: wrongIdx.map((t) => ({ text: `辺${nm(t)}`, note: adj.includes(t) ? `辺${nm(t)}は 辺${en}と となりあって いる 辺。組み立てると 直角に なるよ。` : '頭の 中で 組み立てよう。まず、辺の はしの 点と 重なる 点を さがそう。' })),
+    why: `組み立てると 辺${en}と 辺${partnerName}は くっついて、立方体の 同じ 辺に なるよ。`,
+    hints,
+  });
   return {
     skillId: 'tenkai-edge', title: '重なる 辺', emoji: '🔗',
-    text: `下の 立方体の 展開図を 組み立てます。\n辺${en}と 重なる 辺は どれですか。`,
+    text: `下の 立方体の 展開図を 組み立てます。\n辺${en}と 重なる 辺を 書きましょう。`,
     figure: { type: 'net', rects: netRects(net), points, faceLabels, highlightEdge: [e.a, e.b] },
-    steps: [choice({
-      label: '重なる辺', prompt: `辺${en}と 重なる 辺`, correct: `辺${partnerName}`,
-      wrongs: wrongIdx.map((t) => ({ text: `辺${nm(t)}`, note: adj.includes(t) ? `辺${nm(t)}は 辺${en}と となりあって いる 辺。組み立てると 直角に なるよ。` : '頭の 中で 組み立てよう。まず、辺の はしの 点と 重なる 点を さがそう。' })),
-      why: `組み立てると 辺${en}と 辺${partnerName}は くっついて、立方体の 同じ 辺に なるよ。`,
-      hints: [`辺${en}の 両はしの 点と、それぞれ 重なる 点を さがそう。`, '重なる 点どうしを むすんだ 辺が、重なる 辺。', '辺の 先の 面を 折り上げると、どの 辺と くっつく？'],
-    })],
+    steps: [{
+      kind: 'edges', label: '重なる辺', prompt: `辺${en}と 重なる 辺`, hints,
+      letters: points.map((p) => p.label), edges: bp.edges.map((_, t) => canonEdge(nm(t))), correct: [canonEdge(partnerName)],
+      diagnose: (p) => {
+        const c = p[0] as string;
+        if (c === canonEdge(en)) return `辺${en}じしんでは なく、組み立てると 辺${en}に 重なる 相手の 辺を 書こう。`;
+        if (adjNames.includes(c)) return `その 辺は 辺${en}と となりあって いる 辺。組み立てると 直角に なるよ。重なる 辺は、辺の はしの 点と 重なる 点を むすんだ 辺。`;
+        return null;
+      },
+      scaffold,
+    }],
     summary: `辺${en}と 辺${partnerName}が 重なる。`,
     label: `辺${en}と重なる辺`, q: `辺${en}と重なる辺`, a: `辺${partnerName}`,
   };
@@ -996,13 +1040,13 @@ export function genEhParallel(): Question {
   const onSame = par.find((x) => FACES.some((f) => { const vs = f.name; return vs.includes(x[0]!) && vs.includes(x[1]!) && vs.includes(name[0]!) && vs.includes(name[1]!); })) as string;
   return {
     skillId: 'eh-parallel', title: '平行な 辺を 1本だけ 答えた', emoji: '🕵️',
-    text: `${A_SAYS(`辺${name}に 平行な 辺は、同じ 面の 向かいに ある 辺${onSame}だけ。`)}\n正しく 全部 えらびましょう。`,
+    text: `${A_SAYS(`辺${name}に 平行な 辺は、同じ 面の 向かいに ある 辺${onSame}だけ。`)}\n正しく 全部 書きましょう。`,
     figure: cuboidFig(cuboidDims('distinct'), pickView(), { letters: true, highlight: [name] }),
-    steps: [edgeMulti({
+    steps: [edgeBuild({
       label: '平行な辺', prompt: `辺${name}に 平行な 辺（全部）`, correct: par, exclude: [name],
       why: '同じ 面の 上だけで なく、はなれた ところにも 同じ 向きの 辺が ある。直方体では 3本。',
       hints: ['同じ 向きの 辺を、見えない 辺も ふくめて さがそう。', 'となりの 面や、向かいの 面にも ある。', '全部で 3本。'],
-      diagnose: (p) => (p.length === 1 && p[0] === onSame ? 'Aさんと 同じ答えだよ。はなれた ところにも 平行な 辺が あるよ。' : null),
+      diagnose: (p) => (p.length === 1 && canonEdge(p[0]!) === canonEdge(onSame) ? 'Aさんと 同じ答えだよ。はなれた ところにも 平行な 辺が あるよ。' : p.some((x) => perpendicularEdges(e).map(edgeName).includes(x)) ? `垂直と 平行を とりちがえて いないかな。辺${name}と 交わる 辺は 平行では ないよ。` : null),
     })],
     summary: `辺${name}に 平行な 辺は ${par.map((x) => `辺${x}`).join('・')}。`,
     label: '平行な辺を1本だけ', q: `辺${name}に平行な辺を全部`, a: par.map((x) => `辺${x}`).join('、'),
@@ -1029,7 +1073,7 @@ export function genEhPerp(): Question {
         why: '垂直な 辺は、直角に 交わる 辺。向きが ちがっても、交わらない 辺は 垂直とは いわない。',
         hints: ['垂直の 約束を 思い出そう。', `辺${name}と 辺${skew}は、どこかで 交わって いる？`, '交わって いなければ 垂直とは いわない。'],
       }),
-      edgeMulti({
+      edgeBuild({
         label: '垂直な辺', prompt: `辺${name}に 垂直な 辺（全部）`, correct: per, exclude: [name],
         why: `辺${name}の 両はしで 直角に 交わる 4本。`,
         hints: [`頂点${e[0]}に 集まる 辺を 見よう。`, `頂点${e[1]}に 集まる 辺も 見よう。`, '2本ずつで 4本。'],

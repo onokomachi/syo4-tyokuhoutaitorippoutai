@@ -7,6 +7,7 @@
  * UI（動画・HPバー・ゲージ表示）は BossBattleModule 側が担当する。
  */
 import { TEST_STEPS, TestStep, TestProblem } from './testConfig';
+import { toPickForm } from './problems';
 
 export type BossTier = 'normal' | 'hard' | 'god';
 
@@ -92,6 +93,7 @@ function baseSeconds(tp: TestProblem): number {
   for (const st of tp.steps) {
     if (st.kind === 'choice') t += 14;
     else if (st.kind === 'multi') t += 22;
+    else if (st.kind === 'edges') t += 40;
     else if (st.kind === 'paint') t += 50;
     else if (st.kind === 'sketch') t += 55;
     else if (st.kind === 'dash') t += 20;
@@ -140,7 +142,8 @@ export function pickBossQuestions(tier: BossTier, mastery: Record<string, SkillS
   }
 
   return order.map((step) => {
-    const problem = step.gen();
+    // ボス戦は「えらぶ」形のまま（辺を組み立てる問いも、足場の形で出す）
+    const problem = toPickForm(step.gen());
     const isBig = step.points >= 10;
     const base = baseSeconds(problem) * (isBig ? 1.4 : 1);
     const timeLimitSec = Math.max(8, Math.round(base * config.timeMultiplier)) + (config.timed && needsWrittenCalc(problem) ? WRITTEN_CALC_EXTRA_SEC : 0);
