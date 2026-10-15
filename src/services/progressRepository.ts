@@ -7,7 +7,7 @@
  *   - ポータルが落ちていても、止まるのは「先生に届くこと」だけ
  *   - 環境変数を設定しなければ、従来と完全に同じ挙動になる
  *
- * 単元アプリごとに localStorage キーを一意にしている（hissan_*）ので、
+ * 単元アプリごとに localStorage キーを一意にしている（rippoutai_*）ので、
  * 別単元のアプリからのデータ引きつぎは行わない。単元が変われば
  * モジュールID・スキルIDの体系ごと変わるため、引きついでも意味のある値にならない。
  *
@@ -18,12 +18,19 @@ import type { StateStorage } from 'zustand/middleware';
 import { createSyncedStorage } from 'learning-app-kit/sync';
 
 /** カタログ(learning-app-kit/catalog)の app_id と一致させること。 */
-const APP_ID = 'hissan';
+const APP_ID = 'rippoutai';
+
+/**
+ * import.meta.env をそのまま読まない。Vite の外（`npm run verify` を tsx で走らせるとき）では
+ * import.meta.env が undefined で、読んだ瞬間に落ちて CI の check が赤いままになる。
+ */
+const env = (key: string): string | undefined =>
+  (import.meta as { env?: Record<string, string | undefined> }).env?.[key];
 
 const storage = createSyncedStorage({
   appId: APP_ID,
-  supabaseUrl: import.meta.env.VITE_SUPABASE_URL,
-  supabaseKey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+  supabaseUrl: env('VITE_SUPABASE_URL'),
+  supabaseKey: env('VITE_SUPABASE_PUBLISHABLE_KEY'),
 });
 
 /** 現在の保存先を返す。差し替えポイントはこの関数のみ。 */

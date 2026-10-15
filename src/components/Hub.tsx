@@ -1,11 +1,11 @@
 /**
- * ホーム＝「わり算ランド」。モジュールをカードで選ぶ。
+ * ホーム＝「はこはこランド」。モジュールをカードで選ぶ。
  * 視覚的混沌を避けるため、余白を広く・1カード1テーマに。
  */
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
-  Divide, Zap, Compass, CheckCheck, Scale, Search, BookOpen,
+  Layers, Calculator, Package, Ruler, Search, BookOpen, Box, Scissors, Eye, MapPin, Gift,
   History, Settings as SettingsIcon, Lock, ClipboardCheck, ChevronRight, Flame, Swords, RotateCcw,
 } from 'lucide-react';
 import { MODULES, ModuleMeta } from '../constants';
@@ -28,7 +28,7 @@ interface Props {
 }
 
 const ICONS: Record<string, React.ComponentType<{ size?: number; className?: string }>> = {
-  Divide, Zap, Compass, CheckCheck, Scale, Search, BookOpen,
+  Layers, Calculator, Package, Ruler, Search, BookOpen, Box, Scissors, Eye, MapPin, Gift,
 };
 
 // Tailwind がパージしないよう静的に定義
@@ -43,7 +43,7 @@ const ACCENT: Record<string, { bg: string; text: string; ring: string }> = {
 };
 
 const ModuleCard: React.FC<{ m: ModuleMeta; onClick: () => void; cleared: number }> = ({ m, onClick, cleared }) => {
-  const Icon = ICONS[m.icon] ?? Divide;
+  const Icon = ICONS[m.icon] ?? Calculator;
   const accent = ACCENT[m.accent] ?? ACCENT.blue;
   const isReady = m.status === 'ready';
 
@@ -132,10 +132,10 @@ export const Hub: React.FC<Props> = ({ onSelectModule, onOpenLog, onStartTest, o
           </div>
           <div className="flex items-center justify-center gap-3">
             <h1 className="text-4xl md:text-5xl font-black text-content tracking-tight">
-              わり算の筆算<span className="text-blue-600">ラボEX</span>
+              はこはこ<span className="text-blue-600">ランド</span>
             </h1>
           </div>
-          <p className="text-muted font-medium mt-2">たてる・かける・ひく・おろす を マスターしよう！</p>
+          <p className="text-muted font-medium mt-2">直方体と 立方体を、展開図も 見取図も ぜんぶ アプリの中で マスターしよう！</p>
         </div>
 
         {/* 本番テストモード */}
@@ -150,7 +150,7 @@ export const Hub: React.FC<Props> = ({ onSelectModule, onOpenLog, onStartTest, o
           </div>
           <div className="flex-1">
             <div className="text-xl font-black">📝 本番テストモード</div>
-            <div className="text-sm text-white/85 font-medium">「わり算の筆算」を テストと同じ 問題数で ちょうせん！</div>
+            <div className="text-sm text-white/85 font-medium">「直方体と立方体」の テストと 同じ 問題数で ちょうせん！</div>
           </div>
           <ChevronRight size={28} className="shrink-0 opacity-80" />
         </motion.button>
@@ -233,7 +233,7 @@ export const Hub: React.FC<Props> = ({ onSelectModule, onOpenLog, onStartTest, o
 
         {/* 実力の階段（単元の中の実力チェック）。ハブのいちばん下に置く */}
         <div className="mt-6">
-          <TrialCard appId="hissan" floors={FLOOR_COUNT} onClick={onStartTrial} />
+          <TrialCard appId="rippoutai" floors={FLOOR_COUNT} onClick={onStartTrial} />
         </div>
       </div>
 

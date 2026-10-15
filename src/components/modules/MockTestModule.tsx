@@ -1,40 +1,32 @@
 /**
- * 本番テストモード。わり算単元の単元テストを同じ大問順・同じ問題数で通しで解く。
+ * 本番テストモード。「直方体と立方体」の単元テストを同じ大問順・同じ問題数で通しで解く。
  * 開始前に 表だけ / 裏だけ / 表＋裏（ぜんぶ）の範囲を選べる。
- * 既存の各アクティビティを「1問だけ出す」形で再利用し、ノーミス完答（一発正解）を採点する。
+ * 練習と同じ解答画面（QuestionRound）を「1問だけ出す」形で再利用し、ノーミス完答（一発正解）を採点する。
  *
- * **2回まちがえたら×にして、つぎの問題へ進める。**
+ * **答えを1つ入れる問題は、2回まちがえたら×にして、つぎの問題へ進める。**
  * 正解を入れるまで先に進めない作りだと、分からない子がそこで止まり、
  * テストが最後まで終わらない（＝点数が出ない・記録も残らない）。
  * 実際のテストと同じで、分からない問題は飛ばして先に進めるのが正しい。
  *
- * 筆算だけは回数で切らない。何マスも入力するので、2マスまちがえた時点で
- * 打ち切ると、ほぼ全員が最後まで解けずに終わってしまう。
+ * 何ステップも答える問題（横 → たて、など）は回数で切らない。
+ * 1回ずつまちがえるだけで打ち切られると、ほぼ全員が最後まで解けずに終わってしまう。
  * 代わりに全問に「わからない」ボタンを置き、子どもが自分で切り上げられるようにした。
  *
  * まちがえた問題の「やり方」はテスト中には出さない。終わってから結果の画面で出す。
  * 表=知識技能100点 / 裏=思考判断表現50点。結果は学習のきろくに詳細つきで残す。
  */
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { motion } from 'motion/react';
 import { ChevronLeft, ClipboardCheck, Home, RotateCcw, Trophy, HelpCircle, Lightbulb, Dumbbell } from 'lucide-react';
 import { TEST_STEPS, TestProblem, TestStep, describeProblem, howTo, practiceModuleOf, OMOTE_MAX, URA_MAX, TOTAL_MAX } from '../../lib/testConfig';
-import { ModuleId } from '../../store/progressStore';
 import { useProgressStore, TestDetail } from '../../store/progressStore';
-import { MentalRound } from './MentalModule';
-import { RulesRound } from './RulesModule';
-import { EstimateRound } from './EstimateModule';
-import { CheckRound } from './CheckModule';
-import { WordRound } from './WordProblemModule';
-import { DivErrorRound } from './ErrorHunterModule';
-import { DivisionSimulator } from '../DivisionSimulator';
-import { Problem } from '../../types';
+import { QuestionRound } from '../shared/QuestionRound';
 import { forceSolo } from 'learning-app-kit/sync';
 
 interface Props {
   onExit: () => void;
   /** テストのあと「れんしゅうする」で、その項目のモジュールへ飛ぶ */
-  onPractice?: (id: ModuleId) => void;
+  onPractice?: (skillId: string) => void;
 }
 
 type Phase = 'INTRO' | 'RUN' | 'RESULT';
@@ -44,28 +36,6 @@ const stepsForMode = (mode: Mode): TestStep[] => {
   if (mode === '表') return TEST_STEPS.filter((s) => s.section === '表');
   if (mode === '裏') return TEST_STEPS.filter((s) => s.section === '裏' || s.section === '参考');
   return TEST_STEPS;
-};
-
-/** テスト用の筆算アクティビティ（マスターモードで解き、一発正解を採点） */
-const TestHissan: React.FC<{ problem: Problem; onNext: () => void; onResult: (p: boolean) => void }> = ({ problem, onNext, onResult }) => {
-  const recordResult = useProgressStore((s) => s.recordResult);
-  const [reported, setReported] = useState(false);
-  return (
-    <DivisionSimulator
-      problem={problem}
-      isMasterMode
-      onBack={onNext}
-      onNext={onNext}
-      onFinish={(res) => {
-        // 一発目の採点だけを得点にする（やり直しは学び用で、点には入れない）
-        if (!reported) {
-          setReported(true);
-          onResult(res.isPerfect);
-          recordResult({ moduleId: 'hissan', skillId: 'mock-hissan', label: `${res.dividend} ÷ ${res.divisor}`, correct: res.isPerfect });
-        }
-      }}
-    />
-  );
 };
 
 export const MockTestModule: React.FC<Props> = ({ onExit, onPractice }) => {
@@ -86,6 +56,8 @@ export const MockTestModule: React.FC<Props> = ({ onExit, onPractice }) => {
 
   const reset = () => {
     setIndex(0);
+    movedFrom.current = -1;
+    missCount.current = {};
     setResults({});
     setMisses({});
     setGaveUp({});
@@ -100,25 +72,34 @@ export const MockTestModule: React.FC<Props> = ({ onExit, onPractice }) => {
     setResults((r) => (index in r ? r : { ...r, [index]: perfect }));
   };
 
-  const advance = () => {
-    if (index < activeSteps.length - 1) setIndex((i) => i + 1);
+  /**
+   * 次の問題へ進む。**同じ問題から2回進まない**ようにする（at ＝進む前の問題の番号）。
+   * 「2回まちがえて自動で進む」と「わからない」が重なっても、1つ飛ばしにならない。
+   */
+  const movedFrom = useRef(-1);
+  const advanceFrom = (at: number) => {
+    if (movedFrom.current >= at) return;
+    movedFrom.current = at;
+    if (at < activeSteps.length - 1) setIndex(at + 1);
     else setPhase('RESULT');
   };
+  const advance = () => advanceFrom(index);
 
-  /** 2回まちがえたら×にして、つぎの問題へ。筆算はここを通さない（下を参照） */
+  /** 2回まちがえたら×にして、つぎの問題へ。ステップが複数ある問題はここを通さない（上を参照） */
   const MAX_MISS = 2;
+  const cuts = (i: number) => (problems[i]?.steps.length ?? 1) === 1;
+  const missCount = useRef<Record<number, number>>({});
   const onMiss = () => {
     const at = index;
-    setMisses((m) => {
-      const n = (m[at] ?? 0) + 1;
-      if (n >= MAX_MISS) {
-        // 先に×を確定させてから進める。順番を逆にすると、
-        // 進んだあとの index に対して×が付く
-        setResults((r) => (at in r ? r : { ...r, [at]: false }));
-        setTimeout(advance, 650);   // 「×」を見せてから切り替える
-      }
-      return { ...m, [at]: n };
-    });
+    // 数えるのは更新関数の外で。更新関数の中で進めると、開発モードの2回実行で 2問 進んでしまう
+    const n = (missCount.current[at] ?? 0) + 1;
+    missCount.current[at] = n;
+    setMisses((m) => ({ ...m, [at]: n }));
+    if (cuts(at) && n >= MAX_MISS) {
+      // 先に×を確定させてから進める。順番を逆にすると、進んだあとの index に対して×が付く
+      setResults((r) => (at in r ? r : { ...r, [at]: false }));
+      setTimeout(() => advanceFrom(at), 650);   // 「×」を見せてから切り替える
+    }
   };
 
   /** 「わからない」。分からない問題で止まらずに、テストを最後まで終えられるようにする */
@@ -126,7 +107,7 @@ export const MockTestModule: React.FC<Props> = ({ onExit, onPractice }) => {
     const at = index;
     setResults((r) => (at in r ? r : { ...r, [at]: false }));
     setGaveUp((g) => ({ ...g, [at]: true }));
-    advance();
+    advanceFrom(at);
   };
 
   // 採点（選んだ範囲の最大点）
@@ -178,7 +159,7 @@ export const MockTestModule: React.FC<Props> = ({ onExit, onPractice }) => {
           <div className="bg-surface rounded-[36px] shadow-2xl border border-line p-8 md:p-12 text-center mt-4">
             <div className="w-24 h-24 rounded-3xl bg-blue-50 text-blue-600 flex items-center justify-center mx-auto mb-6"><ClipboardCheck size={44} /></div>
             <h1 className="text-3xl font-black text-content mb-2">本番テストモード</h1>
-            <p className="text-muted font-bold leading-relaxed mb-2">「わり算の筆算(2)」の テストに ちょうせん！</p>
+            <p className="text-muted font-bold leading-relaxed mb-2">「14. 直方体と立方体」の テストに ちょうせん！</p>
             <p className="text-faint font-bold text-sm mb-6">どこに ちょうせんする？ 範囲を えらんでね。まちがえても 正しい こたえまで すすめるよ。一発で 正解できると 点が もらえるよ。</p>
             <div className="flex flex-wrap gap-3">
               <RangeButton m="表" title="表だけ" sub="知識・ぎのう" max={OMOTE_MAX} color="border-blue-300 hover:border-blue-400 bg-blue-50/40" />
@@ -226,7 +207,7 @@ export const MockTestModule: React.FC<Props> = ({ onExit, onPractice }) => {
                 {!gaveUp[i] && (misses[i] ?? 0) >= 2 && <span className="text-xs font-bold text-amber-700">2回まちがえた問題</span>}
                 {practice && onPractice && (
                   <button
-                    onClick={() => onPractice(practice)}
+                    onClick={() => onPractice(s.skillId)}
                     className="ml-auto flex items-center gap-1 px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600
                                text-white font-black text-xs transition-colors active:scale-95"
                   >
@@ -278,8 +259,8 @@ export const MockTestModule: React.FC<Props> = ({ onExit, onPractice }) => {
               <div className="rounded-2xl border border-line p-4 mb-6">
                 <p className="text-xs font-black text-faint mb-1">いかそう算数（点数なし・評価）</p>
                 <div className="flex items-center justify-between">
-                  <span className="font-bold text-content text-sm">なぜ まちがえたかを 見ぬく</span>
-                  <span className={`font-black ${refPerfect ? 'text-emerald-600' : 'text-amber-500'}`}>{refPerfect ? 'A（一発で見ぬけた！）' : 'がんばろう'}</span>
+                  <span className="font-bold text-content text-sm">歩はばから きょりを よそくする</span>
+                  <span className={`font-black ${refPerfect ? 'text-emerald-600' : 'text-amber-500'}`}>{refPerfect ? 'A（一発で できた！）' : 'がんばろう'}</span>
                 </div>
               </div>
             )}
@@ -326,7 +307,7 @@ export const MockTestModule: React.FC<Props> = ({ onExit, onPractice }) => {
           <div className="font-black text-content truncate">大問{step.daimon}{step.sub ?? ''}　<span className="text-muted font-bold">{step.title}</span></div>
           <div className="ml-auto flex items-center gap-2 shrink-0">
             {/* あと何回まちがえられるか。黙って×になると、子どもには何が起きたか分からない */}
-            {(misses[index] ?? 0) > 0 && tp.kind !== 'hissan' && (
+            {(misses[index] ?? 0) > 0 && cuts(index) && (
               <span className="px-2 py-1 rounded-lg bg-rose-50 text-rose-500 text-xs font-black">
                 あと{Math.max(0, 2 - (misses[index] ?? 0))}回
               </span>
@@ -358,7 +339,8 @@ export const MockTestModule: React.FC<Props> = ({ onExit, onPractice }) => {
 
 /**
  * 本番テストの1問を、練習と同じ解答画面で出す。
- * 神域の試練もこれを使う（練習・テスト・試練で、同じ問題は同じ画面で解く）。
+ * 実力の階段・ボス戦もこれを使う（練習・テスト・試練で、同じ問題は同じ画面で解く）。
+ * 測る場面なので、ヒントと「理由を読む」ステップは出さない（testMode）。
  */
 export const TestActivity: React.FC<{
   tp: TestProblem;
@@ -366,19 +348,6 @@ export const TestActivity: React.FC<{
   onResult: (perfect: boolean) => void;
   onMiss?: () => void;
   nextLabel?: string;
-}> = ({ tp, onNext, onResult, onMiss, nextLabel = 'つぎの もんだいへ' }) => {
-  // 筆算（TestHissan）には onMiss を渡さない。何マスも入力するので、
-  // 2マスまちがえた時点で打ち切ると、ほぼ全員が最後まで解けずに終わる。
-  // 代わりにヘッダの「わからない」で子ども自身が切り上げられる。
-  const common = { onNext, onResult, onMiss, nextLabel };
-  switch (tp.kind) {
-    case 'mental': return <MentalRound {...common} level={tp.level} problem={tp.p} />;
-    case 'rules': return <RulesRound {...common} level={tp.level} problem={tp.p} />;
-    case 'estimate': return <EstimateRound {...common} level={tp.level} problem={tp.p} />;
-    case 'check': return <CheckRound {...common} level={tp.level} problem={tp.p} />;
-    case 'word': return <WordRound {...common} level={tp.level} problem={tp.p} />;
-    case 'error': return <DivErrorRound example={tp.p} startStage="judge" onNext={onNext} onResult={onResult} onMiss={onMiss} nextLabel={nextLabel} />;
-    case 'hissan': return <TestHissan problem={tp.p} onNext={onNext} onResult={onResult} />;
-  }
-  return null;
-};
+}> = ({ tp, onNext, onResult, onMiss, nextLabel = 'つぎの もんだいへ' }) => (
+  <QuestionRound question={tp} onNext={onNext} onResult={onResult} onMiss={onMiss} nextLabel={nextLabel} testMode />
+);

@@ -6,16 +6,16 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { getProgressStorage } from '../services/progressRepository';
-import { inferInitialState, scheduleAfterResult, type ReviewState } from 'learning-app-kit/review';
+import { scheduleAfterResult, type ReviewState } from 'learning-app-kit/review';
 
 export type ModuleId =
-  | 'hissan'
-  | 'mental'
-  | 'rules'
-  | 'estimate'
-  | 'check'
-  | 'word-problem'
-  | 'error-hunter'
+  | 'kousei'
+  | 'heiko'
+  | 'tenkai'
+  | 'mitori'
+  | 'ichi'
+  | 'katsuyo'
+  | 'error'
   | 'mock-test'
   | 'boss-battle';
 
@@ -57,8 +57,8 @@ export interface ResultRecord {
   id: string;
   ts: number;
   moduleId: ModuleId;
-  skillId: string; // 例: 'hissan-3-1', 'mental-tens', 'wp-up'
-  label: string; // 履歴表示用（例: "72 ÷ 3"）
+  skillId: string; // 例: 'kousei-cube', 'tenkai-cube', 'eh-net'
+  label: string; // 履歴表示用（例: "立方体の展開図"）
   correct: boolean; // ノーミスで完答できたか
   detail?: TestDetail; // 本番テストのときだけ。各設問の問題・正答・○×
   /** その問題で何回まちがえたか。0なら一発正解 */
@@ -81,13 +81,13 @@ export interface SkillMastery {
 export function skillToModuleId(skillId: string): ModuleId | null {
   if (skillId === 'mock-test' || skillId.startsWith('mock-')) return 'mock-test';
   if (skillId.startsWith('boss-')) return 'boss-battle';
-  if (skillId.startsWith('hissan-')) return 'hissan';
-  if (skillId.startsWith('mental-')) return 'mental';
-  if (skillId.startsWith('rules-')) return 'rules';
-  if (skillId.startsWith('est-')) return 'estimate';
-  if (skillId.startsWith('check-')) return 'check';
-  if (skillId.startsWith('wp-') || skillId.startsWith('word-')) return 'word-problem';
-  if (skillId.startsWith('eh-') || skillId.startsWith('fix-') || skillId.startsWith('judge-')) return 'error-hunter';
+  if (skillId.startsWith('kousei-')) return 'kousei';
+  if (skillId.startsWith('heiko-')) return 'heiko';
+  if (skillId.startsWith('tenkai-')) return 'tenkai';
+  if (skillId.startsWith('mitori-')) return 'mitori';
+  if (skillId.startsWith('ichi-')) return 'ichi';
+  if (skillId.startsWith('katsuyo-')) return 'katsuyo';
+  if (skillId.startsWith('eh-')) return 'error';
   return null;
 }
 
@@ -254,29 +254,9 @@ export const useProgressStore = create<ProgressState>()(
       }),
     }),
     {
-      name: 'hissan_progress_v4',
-      version: 3,
+      name: 'rippoutai_progress_v1',
+      version: 1,
       storage: createJSONStorage(() => getProgressStorage()),
-      // v1→v2: 満点回数カウンタを新設。旧データには存在しないため 0 で補う
-      migrate: (persisted, version) => {
-        const state = persisted as Partial<ProgressState> | undefined;
-        if (state && !state.testPerfectCounts) {
-          state.testPerfectCounts = { omote: 0, ura: 0, total: 0 };
-        }
-        if (state && version < 3 && !state.review) {
-          const review: Record<string, ReviewState> = {};
-          const logs = state.logs ?? [];
-          for (const [skillId, m] of Object.entries(state.mastery ?? {})) {
-            const mod = skillToModuleId(skillId);
-            if (mod === 'mock-test' || mod === 'boss-battle') continue;
-            // logs は新しい順なので、最初に見つかったものが直近
-            const lastTs = logs.find((l) => l.skillId === skillId)?.ts ?? 0;
-            review[skillId] = inferInitialState(m, lastTs);
-          }
-          state.review = review;
-        }
-        return state as ProgressState;
-      },
     }
   )
 );

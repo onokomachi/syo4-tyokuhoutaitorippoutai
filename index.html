@@ -4,7 +4,8 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="color-scheme" content="light dark" />
-    <title>わり算ランド｜わり算の筆算ラボEX</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 100 100%27%3E%3Ctext y=%27.9em%27 font-size=%2790%27%3E%F0%9F%93%A6%3C/text%3E%3C/svg%3E" />
+    <title>はこはこランド｜小4 算数「直方体と立方体」</title>
     <!-- テーマの FOUC（白フラッシュ）防止 その1:
          <head> の時点では document.body は未生成（null）なので、ここでは必ず存在する
          documentElement（<html>）に背景色を即時セットする。これで最初のペイントから
@@ -12,7 +13,7 @@
     <script>
       (function () {
         try {
-          var raw = localStorage.getItem('hissan_settings_v1');
+          var raw = localStorage.getItem('rippoutai_settings_v1');
           var theme = (raw && JSON.parse(raw).state && JSON.parse(raw).state.theme) || 'light';
           var BG = { light: '#eef2f7', dark: '#000000', aurora: '#020309', sakura: '#0d0416', inferno: '#0a0100', tenkuu: '#041022' };
           var bg = BG[theme] || '#eef2f7';

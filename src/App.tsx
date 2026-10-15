@@ -6,19 +6,14 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Hub } from './components/Hub';
-import { HissanModule } from './components/modules/HissanModule';
-import { MentalModule } from './components/modules/MentalModule';
-import { RulesModule } from './components/modules/RulesModule';
-import { EstimateModule } from './components/modules/EstimateModule';
-import { CheckModule } from './components/modules/CheckModule';
-import { WordProblemModule } from './components/modules/WordProblemModule';
-import { ErrorHunterModule } from './components/modules/ErrorHunterModule';
+import { ModuleScreen } from './components/modules/ModuleScreen';
 import { MockTestModule } from './components/modules/MockTestModule';
 import { TrialModule } from './components/modules/TrialModule';
 import { BossBattleModule } from './components/modules/BossBattleModule';
 import { LogView } from './components/LogView';
 import { DebugUnlock } from './components/DebugUnlock';
-import { ModuleId } from './store/progressStore';
+import { ModuleId, skillToModuleId } from './store/progressStore';
+import { MODULES } from './constants';
 import { useApplySettings } from './lib/useApplySettings';
 import { useSettingsStore } from './store/settingsStore';
 import { MatrixRain } from './components/ui/MatrixRain';
@@ -27,7 +22,7 @@ import { SakuraRain } from './components/ui/SakuraRain';
 import { InfernoRain } from './components/ui/InfernoRain';
 import { TenkuuRain } from './components/ui/TenkuuRain';
 
-type View = { kind: 'HUB' } | { kind: 'LOG' } | { kind: 'TEST' } | { kind: 'TRIAL' } | { kind: 'BOSS' } | { kind: 'MODULE'; id: ModuleId };
+type View = { kind: 'HUB' } | { kind: 'LOG' } | { kind: 'TEST' } | { kind: 'TRIAL' } | { kind: 'BOSS' } | { kind: 'MODULE'; id: ModuleId; level?: string };
 
 export default function App() {
   const [view, setView] = useState<View>({ kind: 'HUB' });
@@ -36,25 +31,16 @@ export default function App() {
 
   const goHub = () => setView({ kind: 'HUB' });
 
-  const renderModule = (id: ModuleId) => {
-    switch (id) {
-      case 'hissan':
-        return <HissanModule onExit={goHub} />;
-      case 'mental':
-        return <MentalModule onExit={goHub} />;
-      case 'rules':
-        return <RulesModule onExit={goHub} />;
-      case 'estimate':
-        return <EstimateModule onExit={goHub} />;
-      case 'check':
-        return <CheckModule onExit={goHub} />;
-      case 'word-problem':
-        return <WordProblemModule onExit={goHub} />;
-      case 'error-hunter':
-        return <ErrorHunterModule onExit={goHub} />;
-      default:
-        return <HissanModule onExit={goHub} />;
-    }
+  const renderModule = (id: ModuleId, level?: string) => {
+    const module = MODULES.find((m) => m.id === id) ?? MODULES[0]!;
+    // 結果の「れんしゅうする」から来たら、その項目のレベルを開く
+    return <ModuleScreen key={`${module.id}-${level ?? ''}`} module={module} startLevel={level} onExit={goHub} />;
+  };
+
+  /** 「れんしゅうする」: 記録の名前（skillId）から、モジュールとレベルを開く */
+  const practice = (skillId: string) => {
+    const id = skillToModuleId(skillId);
+    if (id && id !== 'mock-test' && id !== 'boss-battle') setView({ kind: 'MODULE', id, level: skillId });
   };
 
   return (
@@ -83,13 +69,13 @@ export default function App() {
           {view.kind === 'TEST' && (
             <motion.div key="test" initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }} className="w-full h-full">
               {/* テストのあと、まちがえた項目の練習へ直接飛べるようにする */}
-              <MockTestModule onExit={goHub} onPractice={(id) => setView({ kind: 'MODULE', id })} />
+              <MockTestModule onExit={goHub} onPractice={practice} />
             </motion.div>
           )}
           {view.kind === 'TRIAL' && (
             <motion.div key="trial" initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }} className="w-full h-full">
               {/* テストのあと、まちがえた項目の練習へ直接飛べるようにする */}
-              <TrialModule onExit={goHub} onPractice={(id) => setView({ kind: 'MODULE', id })} />
+              <TrialModule onExit={goHub} onPractice={practice} />
             </motion.div>
           )}
 
@@ -100,8 +86,8 @@ export default function App() {
           )}
 
           {view.kind === 'MODULE' && (
-            <motion.div key={`module-${view.id}`} initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }} className="w-full h-full">
-              {renderModule(view.id)}
+            <motion.div key={`module-${view.id}-${view.level ?? ''}`} initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }} className="w-full h-full">
+              {renderModule(view.id, view.level)}
             </motion.div>
           )}
 
