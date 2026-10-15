@@ -8,16 +8,18 @@
  *  2. 数: 正答で誤答診断が null / 整数 / 5文字以内 / ヒント3段 / 1段めが答えを言わない
  *  3. 選択式: 正解の位置が範囲内 / 重複なし / wrong の並び / 正解の位置だけ null
  *  4. 全部えらぶ: 正解の組が○になる・正解の組で診断が反応しない
+ *  4b. 辺を組み立てる答え（edges）: 正解の辺の名前を並べかえても・リストの順番を入れかえても○／辺を1本ぬく・余分な辺を足す・
+ *      べつの辺にずらすと×／正解の組で誤答診断が反応しない／足場（えらぶ形）が正しい／toPickForm でボス戦用の形にもどる
  *  5. 作図: 正しい答え（展開図のマス・見取図の線・点・点線の辺）を入れると○になる。方眼からはみ出さない
  *  6. 出題のバリエーションが 20通り以上（画面に出る図まで含めて数える）
  *  7. 選択式の正解が1つの位置に かたよらない
  */
-import { GENERATORS, generate } from '../src/lib/problems';
+import { GENERATORS, generate, toPickForm } from '../src/lib/problems';
 import type { Question, Step } from '../src/lib/question';
 import { MODULES } from '../src/constants';
 import { TEST_STEPS, OMOTE_MAX, URA_MAX } from '../src/lib/testConfig';
 import { EXTRA_SKILLS } from '../src/lib/trialConfig';
-import { gradeMulti, gradePaint, gradeSketch, gradeDash, gradePoint } from '../src/lib/grade';
+import { gradeMulti, gradeEdges, gradePaint, gradeSketch, gradeDash, gradePoint } from '../src/lib/grade';
 import { randomHexomino, shapeId, isCubeNet, randomNet, boundaryPoints, cellsOf } from '../src/lib/solid';
 
 let failures = 0;
@@ -85,6 +87,41 @@ function checkStep(id: string, s: Step, stepNo: number) {
       if (new Set(s.options).size !== s.options.length) fail(id, `${tag}: 選択肢に重複`);
       if (!gradeMulti(s, [...s.correct]).ok) fail(id, `${tag}: 正解の組が○にならない`);
       if (s.diagnose && s.diagnose([...s.correct]) !== null) fail(id, `${tag}: 正解の組で診断が反応する`);
+      break;
+    }
+    case 'edges': {
+      const L = new Set(s.letters);
+      if (L.size !== s.letters.length) fail(id, `${tag}: 頂点の文字に重複`);
+      if (s.correct.length === 0) fail(id, `${tag}: 正解の辺が無い`);
+      const canon = (n: string) => [...n].sort().join('');
+      for (const e of [...s.edges, ...s.correct]) if (e.length !== 2 || ![...e].every((c) => L.has(c))) fail(id, `${tag}: 辺 ${e} が図の文字でできていない`);
+      if (new Set(s.edges).size !== s.edges.length) fail(id, `${tag}: 辺の一覧に重複`);
+      for (const c of s.correct) if (!s.edges.includes(canon(c))) fail(id, `${tag}: 正解 ${c} が辺の一覧に無い`);
+      // 正解: 名前を逆から書く・リストの順番を入れかえる・全部の書き方で○
+      const rev = s.correct.map((c) => [...c].reverse().join(''));
+      if (!gradeEdges(s, [...s.correct]).ok) fail(id, `${tag}: 正解の組が○にならない`);
+      if (!gradeEdges(s, rev).ok) fail(id, `${tag}: 頂点の順番を逆に書いた正解が○にならない`);
+      if (!gradeEdges(s, [...s.correct].reverse()).ok) fail(id, `${tag}: リストの順番を変えた正解が○にならない`);
+      if (!gradeEdges(s, [...rev, ...s.correct]).ok) fail(id, `${tag}: 同じ辺を2回入れた正解が○にならない`);
+      if (s.diagnose && s.diagnose([...s.correct].map(canon).sort()) !== null) fail(id, `${tag}: 正解の組で診断が反応する`);
+      // まちがい: 1本ぬく・余分に足す・べつの辺にずらす・何も入れない は×
+      if (s.correct.length > 1 && gradeEdges(s, s.correct.slice(1)).ok) fail(id, `${tag}: 1本たりなくても○になる`);
+      const others = s.edges.filter((e) => !s.correct.map(canon).includes(e));
+      for (const o of others) {
+        if (gradeEdges(s, [...s.correct, o]).ok) fail(id, `${tag}: 余分な辺 ${o} を足しても○になる`);
+        if (gradeEdges(s, [o]).ok) fail(id, `${tag}: まちがいの辺 ${o} だけで○になる`);
+        if (gradeEdges(s, [...s.correct.slice(1), o]).ok) fail(id, `${tag}: 1本を ${o} にずらしても○になる`);
+      }
+      if (gradeEdges(s, []).ok) fail(id, `${tag}: 何も入れずに○になる`);
+      // 足場: いまの「えらぶ」形が正しい
+      checkStep(id, s.scaffold, stepNo);
+      if (s.scaffold.kind === 'multi') {
+        const want = s.scaffold.correct.map((i) => (s.scaffold as { options: string[] }).options[i]!.replace('辺', '')).map(canon).sort();
+        if (want.join() !== [...s.correct].map(canon).sort().join()) fail(id, `${tag}: 足場の正解と組み立ての正解がちがう`);
+      } else if (s.scaffold.kind === 'choice') {
+        const want = canon(s.scaffold.choices[s.scaffold.correct]!.replace('辺', ''));
+        if (s.correct.length !== 1 || want !== canon(s.correct[0]!)) fail(id, `${tag}: 足場の正解と組み立ての正解がちがう`);
+      }
       break;
     }
     case 'paint': {
@@ -155,6 +192,17 @@ for (const t of TEST_STEPS) {
   }
 }
 
+// 本番テストの辺を答える問い（大問3③④・8②）は組み立てる形（edges）で出る。ボス戦用の形にはえらぶ形が出る
+for (const [d, sub] of [[3, '③'], [3, '④'], [8, '②']] as [number, string][]) {
+  const t = TEST_STEPS.find((x) => x.daimon === d && x.sub === sub);
+  if (!t) { fail('test', `大問${d}${sub} が無い`); continue; }
+  for (let i = 0; i < 100; i++) {
+    const q = t.gen();
+    if (q.steps.length !== 1 || q.steps[0]!.kind !== 'edges') { fail(`test${d}${sub}`, '組み立てる形（edges）になっていない'); break; }
+    if (toPickForm(q).steps[0]!.kind === 'edges') { fail(`test${d}${sub}`, 'ボス戦用の形にもどらない'); break; }
+  }
+}
+
 const table: string[] = [];
 for (const id of Object.keys(GENERATORS)) {
   const seen = new Set<string>();
@@ -169,6 +217,13 @@ for (const id of Object.keys(GENERATORS)) {
     if (!q.text || !q.summary || !q.q || !q.a || !q.title) fail(id, '文字が空');
     if (q.steps.length < 1) fail(id, 'ステップが無い');
     q.steps.forEach((s, k) => checkStep(id, s, k));
+    for (const st of q.steps) {
+      if (st.kind !== 'edges') continue;
+      const f = q.figure;
+      if (f?.type === 'cuboid' && !f.letters) fail(id, '辺を答える問いなのに、図に頂点の文字が出ていない');
+      if (f?.type === 'net' && JSON.stringify(f.points?.map((p) => p.label)) !== JSON.stringify(st.letters)) fail(id, '展開図の点の文字と、組み立てる文字がちがう');
+    }
+    if (toPickForm(q).steps.some((st) => st.kind === 'edges')) fail(id, 'toPickForm のあとに edges が残る');
     seen.add(signature(q));
     for (const s of q.steps) if (s.kind === 'choice' && s.choices.length > 2) { choiceN++; pos.set(s.correct, (pos.get(s.correct) ?? 0) + 1); }
   }

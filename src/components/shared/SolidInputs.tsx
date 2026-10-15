@@ -11,8 +11,8 @@
  * 採点はしない（QuestionRound がする）。まちがえても かいたものは消さず、直して出し直せる。
  */
 import React, { useEffect, useRef, useState } from 'react';
-import { Undo2, Eraser, Check } from 'lucide-react';
-import type { MultiStep, PaintStep, SketchStep, DashStep, PointStep } from '../../lib/question';
+import { Undo2, Eraser, Check, X } from 'lucide-react';
+import type { MultiStep, PaintStep, SketchStep, DashStep, PointStep, EdgesStep } from '../../lib/question';
 import { cellsOf, EDGES, edgeName, type Seg, type Pt, type VName } from '../../lib/solid';
 import { NetSvgBody, GridLines, PlaneSvg, cuboidGeometry } from './Figure';
 
@@ -241,6 +241,70 @@ export const PointPicker: React.FC<{ step: PointStep; onSubmit: (p: Pt) => void 
       </div>
       <p className="text-sm font-bold text-muted">点を かく ところを タップしよう（タップしなおすと うごく）。</p>
       <SubmitButton enabled={!!picked} onClick={() => picked && onSubmit(picked)} />
+    </div>
+  );
+};
+
+/* ================================================================== */
+/* 辺を組み立てる（頂点の文字を2つタップ）                                    */
+/* ================================================================== */
+
+const canonName = (n: string): string => [...n].sort().join('');
+
+/**
+ * 図に出ている頂点の文字を2つタップして「辺○○」をつくり、リストにくわえる。
+ * 並べる順番は問わない（EH と HE は同じ辺）。リストの順番も問わない。
+ * ダミーの文字は混ぜない（図にある文字だけ）。12本ぜんぶのボタンを並べる形はやめた（それは足場）。
+ */
+export const EdgeBuilder: React.FC<{ step: EdgesStep; onSubmit: (picked: string[]) => void }> = ({ step, onSubmit }) => {
+  const [first, setFirst] = useState<string | null>(null);
+  const [list, setList] = useState<string[]>([]);
+  const [note, setNote] = useState<string | null>(null);
+  const single = step.correct.length === 1;
+  const real = new Set(step.edges);
+
+  const tapLetter = (l: string) => {
+    setNote(null);
+    if (first === null) { setFirst(l); return; }
+    if (first === l) { setFirst(null); return; }
+    const name = `${first}${l}`;
+    const c = canonName(name);
+    setFirst(null);
+    if (!real.has(c)) { setNote(`${first}と ${l}は、図の 上で 辺に なって いないよ。辺の 両はしの 頂点を えらぼう。`); return; }
+    if (list.some((x) => canonName(x) === c)) { setNote(`辺${name}は もう 入って いるよ。`); return; }
+    setList((cur) => (single ? [name] : [...cur, name]));
+  };
+
+  return (
+    <div className="space-y-3" data-testid="edge-builder">
+      <div className="rounded-2xl bg-surface-2 border-2 border-line p-3 text-center">
+        <div className="text-xs font-bold text-muted mb-1">図の 文字を 2つ タップすると 辺が できるよ</div>
+        <div className="text-3xl font-black text-content tabular-nums min-h-[2.5rem]" data-testid="edge-draft">
+          辺<span className={first ? '' : 'text-faint'}>{first ?? '？'}</span><span className="text-faint">？</span>
+        </div>
+      </div>
+      <div className="flex flex-wrap justify-center gap-2" data-testid="edge-letters">
+        {step.letters.map((l) => (
+          <button key={l} onClick={() => tapLetter(l)} data-testid={`letter-${l}`}
+            className={`w-12 h-12 rounded-2xl border-2 text-xl font-black transition active:scale-95 ${first === l ? 'bg-brand text-on-brand border-brand' : 'bg-surface border-line text-content'}`}>
+            {l}
+          </button>
+        ))}
+      </div>
+      {note && <p className="text-sm font-bold text-amber-700 text-center" data-testid="edge-note">{note}</p>}
+      <div className="min-h-[2.5rem]">
+        <div className="text-xs font-bold text-muted mb-1">{single ? 'こたえの 辺' : '書いた 辺（いくつでも）'}</div>
+        <div className="flex flex-wrap gap-2" data-testid="edge-list">
+          {list.length === 0 && <span className="text-sm font-bold text-faint">まだ ありません</span>}
+          {list.map((n) => (
+            <span key={n} className="inline-flex items-center gap-1 pl-3 pr-1.5 py-1 rounded-full bg-sky-100 border border-sky-300 text-sky-900 font-black">
+              辺{n}
+              <button onClick={() => setList((cur) => cur.filter((x) => x !== n))} aria-label={`辺${n}を 消す`} className="w-6 h-6 rounded-full bg-sky-200 grid place-items-center text-sky-800"><X size={14} /></button>
+            </span>
+          ))}
+        </div>
+      </div>
+      <SubmitButton enabled={list.length > 0} onClick={() => onSubmit(list)} label="こたえる" />
     </div>
   );
 };

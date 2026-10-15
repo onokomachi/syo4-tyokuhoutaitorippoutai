@@ -16,11 +16,11 @@ import { Lightbulb, Check, X } from 'lucide-react';
 import { ScratchPad, useRoundRecorder } from 'learning-app-kit/react';
 import { Keypad } from './Keypad';
 import { FigureView } from './Figure';
-import { MultiPicker, NetPaint, SketchBoard, DashBoard, PointPicker } from './SolidInputs';
+import { MultiPicker, NetPaint, SketchBoard, DashBoard, PointPicker, EdgeBuilder } from './SolidInputs';
 import { HintBox, ResultPanel } from '../ui/primitives';
-import type { Question, Step, NumStep, ChoiceStep, PadSpec } from '../../lib/question';
+import type { Question, Step, NumStep, ChoiceStep, MultiStep, PadSpec } from '../../lib/question';
 import { toNum } from '../../lib/question';
-import { gradeMulti, gradePaint, gradeSketch, gradeDash, gradePoint, type Graded } from '../../lib/grade';
+import { gradeMulti, gradeEdges, gradePaint, gradeSketch, gradeDash, gradePoint, type Graded } from '../../lib/grade';
 import { skillToModuleId, useProgressStore } from '../../store/progressStore';
 import { playClear, playCorrect, playSoftTry } from '../../lib/sound';
 import { encourage } from '../../lib/praise';
@@ -65,11 +65,14 @@ export const QuestionRound: React.FC<Props> = ({ question, onNext, onResult, onM
   const [picked, setPicked] = useState<number | null>(null);
   const [wrongSet, setWrongSet] = useState<number[]>([]);
   const [multiOk, setMultiOk] = useState(false);
+  const [scaffoldWrong, setScaffoldWrong] = useState<number[]>([]);
   const [shownHints, setShownHints] = useState(0);
   const [finished, setFinished] = useState(false);
   const recordResult = useProgressStore((s) => s.recordResult);
   const moduleId = skillToModuleId(question.skillId) ?? 'kousei';
   // できなかった問題も残す。まちがえた回数を数え、正解までたどりつかずに離れたときも1件記録する
+  // 辺を組み立てる問いの足場（えらぶ形）。練習で2回まちがえたら出す。できるようになった項目（連続ノーミス3回以上）では出さない
+  const streak = useProgressStore((s) => s.getMasteryStreak(question.skillId));
   const rec = useRoundRecorder({ moduleId, skillId: question.skillId, record: recordResult });
   const endRef = useRef<HTMLDivElement>(null);
 
@@ -111,6 +114,7 @@ export const QuestionRound: React.FC<Props> = ({ question, onNext, onResult, onM
     setPicked(null);
     setWrongSet([]);
     setMultiOk(false);
+    setScaffoldWrong([]);
     setStepMiss(0);
     setShownHints(0);
     if (last) finish();
@@ -267,6 +271,42 @@ export const QuestionRound: React.FC<Props> = ({ question, onNext, onResult, onM
               </>
             )}
 
+            {step.kind === 'edges' && (
+              <>
+                <EdgeBuilder key={idx} step={step} onSubmit={(p) => judged(gradeEdges(step, p), { label: step.label, text: step.correct.map((c) => `辺${c}`).join('・') })} />
+                {!testMode && stepMiss >= 2 && streak < 0.6 && (
+                  <div className="mt-4 rounded-2xl border-2 border-dashed border-sky-300 bg-sky-50/50 p-3" data-testid="scaffold">
+                    <div className="text-sm font-black text-sky-800 mb-2">こまったら、ここから えらんでも いいよ</div>
+                    {step.scaffold.kind === 'multi' ? (
+                      <MultiPicker key={`s${idx}`} step={step.scaffold as MultiStep} locked={false} onSubmit={(p) => {
+                        const sc = step.scaffold as MultiStep;
+                        const g = gradeMulti(sc, p);
+                        if (!g.ok) { miss(g.note); return; }
+                        playCorrect();
+                        advance({ label: step.label, text: sc.correct.map((i) => sc.options[i]).join('・') });
+                      }} />
+                    ) : (
+                      <div className="grid grid-cols-1 gap-2" data-testid="scaffold-choices">
+                        {(step.scaffold as ChoiceStep).choices.map((c, i) => {
+                          const sc = step.scaffold as ChoiceStep;
+                          const bad = scaffoldWrong.includes(i);
+                          return (
+                            <button key={i} disabled={bad} data-testid={`scaffold-choice-${i}`}
+                              onClick={() => {
+                                if (i === sc.correct) { playCorrect(); advance({ label: step.label, text: c }); }
+                                else { setScaffoldWrong((w) => [...w, i]); miss(sc.wrong?.[i] ?? null); }
+                              }}
+                              className={`px-4 py-3 rounded-2xl border-2 text-left font-black text-lg transition active:scale-[0.98] ${bad ? 'bg-surface-2 border-line text-faint line-through' : 'bg-surface border-line text-content hover:border-brand'}`}>
+                              {c}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </>
+            )}
             {step.kind === 'paint' && (
               <NetPaint key={idx} step={step} onSubmit={(cells) => judged(gradePaint(step, cells), { label: step.label, text: 'かけた！' })} />
             )}
