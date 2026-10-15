@@ -27,7 +27,7 @@ interface Ember {
 interface FlameTongue {
   baseX: number;        // 根もとのx座標
   width: number;        // 根もとの幅
-  heightBase: number;   // 平均の高さ
+  heightBase: number;   // 基準の高さ
   heightAmp: number;    // 高さのゆらぎ幅
   swayAmp: number;      // 先端の左右ゆれ幅
   swaySpeed: number;

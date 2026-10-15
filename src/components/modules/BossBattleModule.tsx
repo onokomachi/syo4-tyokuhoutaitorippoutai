@@ -22,13 +22,7 @@ import {
 } from '../../lib/bossBattle';
 import { TestProblem } from '../../lib/testConfig';
 import { playCorrect, playClear, playSoftTry } from '../../lib/sound';
-import { RulesRound } from './RulesModule';
-import { EstimateRound } from './EstimateModule';
-import { CheckRound } from './CheckModule';
-import { WordRound } from './WordProblemModule';
-import { DivErrorRound } from './ErrorHunterModule';
-import { DivisionSimulator } from '../DivisionSimulator';
-import { Problem } from '../../types';
+import { QuestionRound } from '../shared/QuestionRound';
 
 interface Props { onExit: () => void; }
 
@@ -43,30 +37,6 @@ type Phase = 'INTRO' | 'BATTLE' | 'RESULT';
 type AttackKind = 'normal' | 'special' | null;
 type ActionChoice = 'attack' | 'heal' | 'guard';
 type FeedbackKind = 'boss-dmg' | 'heal' | 'guard-set' | 'guard-block' | 'player-dmg' | 'point' | 'nopoint';
-
-/* ---------------- 筆算の問題を1問だけ出す ----------------
- * マスターモードの「答え合わせ」は、正解・不正解を問わず押すたびに onFinish が呼ばれる
- * （本番テストの一発勝負スコアリング用の仕様）。ボス戦でそのまま使うと、まちがえて
- * 「まちがいをなおす」で直している最中に、初回の不正解判定で次の問題へ進んでしまい、
- * 直した答えが評価されない不具合になる。ここでは isPerfect のときだけ結果を報告し、
- * 不正解のときは何もせず（そのまま自己修正させ）、間に合わなければ制限時間切れで処理する。 */
-const BossHissan: React.FC<{ problem: Problem; onResult: (perfect: boolean) => void; resolveKey: number }> = ({ problem, onResult, resolveKey }) => {
-  const reportedRef = useRef(false);
-  useEffect(() => { reportedRef.current = false; }, [resolveKey]);
-  return (
-    <DivisionSimulator
-      problem={problem}
-      isMasterMode
-      onBack={() => {}}
-      onFinish={(res) => {
-        if (res.isPerfect && !reportedRef.current) {
-          reportedRef.current = true;
-          onResult(true);
-        }
-      }}
-    />
-  );
-};
 
 /* ---------------- HPバー ---------------- */
 const HpBar: React.FC<{ label: string; hp: number; max: number; color: string; icon: React.ReactNode }> = ({ label, hp, max, color, icon }) => {
@@ -307,7 +277,7 @@ export const BossBattleModule: React.FC<Props> = ({ onExit }) => {
       <div className="w-full h-full overflow-y-auto bg-[#03060f]">
         <div className="max-w-2xl mx-auto px-4 py-6">
           <button onClick={onExit} className="flex items-center gap-2 text-white/70 hover:text-white font-bold px-3 py-2 rounded-xl hover:bg-white/10 transition-colors mb-2">
-            <ChevronLeft size={24} /> わり算ランドへ
+            <ChevronLeft size={24} /> はこはこランドへ
           </button>
 
           <div className="text-center mt-4 mb-8">
@@ -401,20 +371,10 @@ export const BossBattleModule: React.FC<Props> = ({ onExit }) => {
   const gaugePct = Math.round(bossGaugePct * 100);
   const gaugeUrgent = bossGaugePct >= 0.6;
 
-  const renderAnswer = (tp: TestProblem) => {
-    const common = { onNext: () => {}, nextLabel: 'つぎへ' };
-    const onResult = () => handleCorrect();
-    switch (tp.kind) {
-      case 'rules': return <RulesRound {...common} level={tp.level} problem={tp.p} onResult={onResult} />;
-      case 'estimate': return <EstimateRound {...common} level={tp.level} problem={tp.p} onResult={onResult} />;
-      case 'check': return <CheckRound {...common} level={tp.level} problem={tp.p} onResult={onResult} />;
-      case 'word': return <WordRound {...common} level={tp.level} problem={tp.p} onResult={onResult} />;
-      case 'error': return <DivErrorRound example={tp.p} startStage="judge" onNext={() => {}} onResult={onResult} nextLabel="つぎへ" />;
-      case 'hissan': return <BossHissan problem={tp.p} onResult={onResult} resolveKey={resolveKey} />;
-      case 'mental': return null;
-    }
-  };
-
+  // 練習・テストと同じ解答画面。ボス戦は測る場面なので、ヒントと理由の言語化は出さない（testMode）
+  const renderAnswer = (tp: TestProblem) => (
+    <QuestionRound question={tp} onNext={() => {}} nextLabel="つぎへ" testMode onResult={() => handleCorrect()} />
+  );
 
   return (
     <div className="relative w-full h-full overflow-hidden bg-black select-none">
@@ -512,7 +472,7 @@ export const BossBattleModule: React.FC<Props> = ({ onExit }) => {
         {/* フッタ：行動選択＋タイマー＋解答パネル。ヘッダ以外の残り高さをすべてここに割り当てる
             （バナーを絶対配置にしたぶん、キーパッドなど背の高いコンテンツにも高さをゆずれる）。 */}
         <div className="flex-1 min-h-0 p-3 md:p-5 pointer-events-auto flex flex-col">
-          <div className={`mx-auto w-full flex-1 min-h-0 flex flex-col ${q?.problem.kind === 'hissan' ? '' : 'max-w-md portrait:max-w-xl'}`}>
+          <div className={`mx-auto w-full flex-1 min-h-0 flex flex-col max-w-md portrait:max-w-xl`}>
             <div className="flex items-center gap-2 mb-2 shrink-0">
               <span className="flex items-center gap-1 bg-amber-400/90 text-slate-900 text-xs font-black px-3 py-1.5 rounded-full shrink-0">
                 <Zap size={14} /> ポイント {actionPoints}

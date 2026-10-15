@@ -5,32 +5,27 @@
  * このアプリが決めるのは、段（trialConfig）と、1問の作り方・出し方だけ。
  * 問題は本番テストと同じ解答画面（TestActivity）で出す。
  */
-import React from 'react';
+import React, { useMemo } from 'react';
 import confetti from 'canvas-confetti';
 import { TrialScreen } from 'learning-app-kit/react';
 import { TRIAL, ENDLESS_FLOORS, EXTRA_SKILLS, trialProblem } from '../../lib/trialConfig';
-import { practiceModuleOf, type TestProblem } from '../../lib/testConfig';
-import type { ModuleId } from '../../store/progressStore';
+import { type TestProblem } from '../../lib/testConfig';
+import { generate } from '../../lib/problems';
 import { playClear, playCorrect, playSoftTry } from '../../lib/sound';
 import { TestActivity } from './MockTestModule';
-import { CheckRound } from './CheckModule';
-import { EstimateRound } from './EstimateModule';
-import { MentalRound } from './MentalModule';
-import { RulesRound } from './RulesModule';
-import { WordRound } from './WordProblemModule';
 
 /** 本番テストの設問か、テストに出ない項目（無限だけ）か */
 type TrialQ = { tp: TestProblem } | { extra: string };
 
 interface Props {
   onExit: () => void;
-  /** 結果から「やるべき段」の練習へ飛ぶ */
-  onPractice: (id: ModuleId) => void;
+  /** 結果から「やるべき段」の練習へ飛ぶ（記録の名前を渡す） */
+  onPractice: (skillId: string) => void;
 }
 
 export const TrialModule: React.FC<Props> = ({ onExit, onPractice }) => (
   <TrialScreen<TrialQ>
-    appId="hissan"
+    appId="rippoutai"
     supabaseUrl={import.meta.env.VITE_SUPABASE_URL as string | undefined}
     supabaseKey={import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string | undefined}
     floors={TRIAL.floors}
@@ -48,10 +43,7 @@ export const TrialModule: React.FC<Props> = ({ onExit, onPractice }) => (
     )}
     onExit={onExit}
     exitLabel="もどる"
-    onPractice={(skillId) => {
-      const m = practiceModuleOf(skillId);
-      if (m) onPractice(m);
-    }}
+    onPractice={(skillId) => onPractice(skillId)}
     sound={{
       correct: playCorrect,
       miss: playSoftTry,
@@ -71,14 +63,9 @@ interface ExtraProps {
 
 /**
  * 本番テストに出ない項目を、練習と同じ画面で出す（無限だけ）。
- * 練習の画面は level だけ渡せば自分で問題を作る。問題ごとに作り直される（TrialScreen が key を変える）。
+ * 問題ごとに作り直される（TrialScreen が key を変える）。
  */
 export const ExtraRound: React.FC<ExtraProps> = ({ skillId, onResult, onMiss }) => {
-  const common = { onNext: () => {}, onResult, onMiss, nextLabel: 'つぎへ' };
-  if (skillId.startsWith('check-')) return <CheckRound {...common} level={skillId as React.ComponentProps<typeof CheckRound>['level']} />;
-  if (skillId.startsWith('est-')) return <EstimateRound {...common} level={skillId as React.ComponentProps<typeof EstimateRound>['level']} />;
-  if (skillId.startsWith('mental-')) return <MentalRound {...common} level={skillId as React.ComponentProps<typeof MentalRound>['level']} />;
-  if (skillId.startsWith('rules-')) return <RulesRound {...common} level={skillId as React.ComponentProps<typeof RulesRound>['level']} />;
-  if (skillId.startsWith('wp-')) return <WordRound {...common} level={skillId as React.ComponentProps<typeof WordRound>['level']} />;
-  return null;
+  const tp = useMemo(() => generate(skillId), [skillId]);
+  return <TestActivity tp={tp} onNext={() => {}} onResult={onResult} onMiss={onMiss} nextLabel="つぎへ" />;
 };

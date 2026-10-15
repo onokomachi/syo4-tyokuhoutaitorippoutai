@@ -83,20 +83,23 @@ function weightedPick<T>(items: { item: T; weight: number }[]): T {
   return items[items.length - 1].item;
 }
 
-/** 問題の種類ごとの「素の」制限時間（秒）。本番テストの実時間感覚から逆算した目安値。 */
+/**
+ * 問題ごとの「素の」制限時間（秒）。ステップの数と、けいさんらん・たし算ボードを使う時間から決める。
+ * （持ち時間は、読む・けいさんらんに書く・入力する時間まで数えて決める）
+ */
 function baseSeconds(tp: TestProblem): number {
-  switch (tp.kind) {
-    case 'mental': return 14;
-    case 'rules': return 18;
-    case 'estimate': return 18;
-    case 'check': return 26;
-    case 'word': return 32;
-    case 'error': return 22;
-    case 'hissan':
-      if (tp.diff === '3-3') return 62;
-      if (tp.diff === '3-2') return 50;
-      return 38; // 2-2（このプールに 2-1/3-1 は出現しない）
+  let t = 8;
+  for (const st of tp.steps) {
+    if (st.kind === 'choice') t += 14;
+    else if (st.kind === 'multi') t += 22;
+    else if (st.kind === 'paint') t += 50;
+    else if (st.kind === 'sketch') t += 55;
+    else if (st.kind === 'dash') t += 20;
+    else if (st.kind === 'point') t += 14;
+    else if (st.pad) t += 26;
+    else t += 12;
   }
+  return t;
 }
 
 export interface BossQuestion {
@@ -112,9 +115,9 @@ export interface BossQuestion {
 /** GOD で、筆算（けいさんらん）が要る問題に足す秒数。書く時間を 持ち時間に入れる */
 const WRITTEN_CALC_EXTRA_SEC = 20;
 
-/** 筆算が要る問題か（けいさんらんを出している問題の種類） */
+/** けいさんらんが要る問題か（筆算を開くステップがある問題） */
 function needsWrittenCalc(problem: TestProblem): boolean {
-  return ['hissan', 'check', 'word', 'rules', 'error'].includes(problem.kind);
+  return problem.steps.some((st) => st.kind === 'num' && !!st.pad);
 }
 
 /** ティアと習熟度データから、1バトル分の出題列をつくる（表・裏を混ぜ、参考問題は除く）。 */

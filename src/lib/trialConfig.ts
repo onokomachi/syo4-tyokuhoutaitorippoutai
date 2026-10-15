@@ -23,21 +23,23 @@ export function trialProblem(skillId: string): TestProblem {
  * 頂点に届いた子は、無限で単元のすべての項目に挑める。
  */
 export const EXTRA_SKILLS: readonly string[] = [
-  'check-nodiv',
-  'check-rem',
-  'check-big',
-  'est-digits',
-  'est-round',
-  'mental-basic',
-  'mental-rem',
-  'mental-tens',
-  'mental-hundreds',
-  'rules-hundreds',
-  'rules-blank',
-  'wp-share',
-  'wp-group',
-  'wp-up',
-  'wp-down',
+  'kousei-sort',
+  'kousei-higo',
+  'heiko-edgeperp',
+  'tenkai-cubeok',
+  'mitori-count',
+  'mitori-hidden',
+  'ichi-space',
+  'eh-edges',
+  'eh-face',
+  'eh-hidden',
+  'eh-net',
+  'eh-overlap',
+  'eh-parallel',
+  'eh-perp',
+  'eh-ichi',
+  'katsuyo-ribbon',
+  'katsuyo-ribbonnet',
 ];
 
 /** 無限で出す段（テスト外の項目を、同じモジュールの段に混ぜたもの） */

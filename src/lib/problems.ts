@@ -1,851 +1,1134 @@
 /**
- * わり算単元（4年）の問題ジェネレーター集。
- * 教科書・問題集・単元テストで頻出の問題タイプを、スキル別・段階別に網羅する。
+ * 小4 算数「直方体と立方体」の問題ジェネレーター（純粋関数）。
  *
- * - mental   : あんざいわり算（九九の範囲 → あまり → 何十・何百）
- * - rules    : わり算のきまり（同じ数でわる・□うめ・あまりの10倍に注意）
- * - estimate : 商の見当づけ（商がたつ位・商のけた数・四捨五入による仮商）
- * - check    : たしかめ算（わる数×商＋あまり＝わられる数）
- * - word     : 文章題（等分除・包含除・あまりの切り上げ/切り捨て）
- * - error    : エラーハンター（0とばし・あまり過大・ひき算ミス・きまりのあまり）
+ * 単元の柱（東京書籍 新しい算数4下「14. 直方体と立方体」）
+ *   ① 直方体・立方体の面・辺・頂点   … 面の形と数、等しい辺、ひごと ねん土玉、厚紙で箱  → kousei-*
+ *   ② 面や辺の平行・垂直             … 面と面・辺と辺・面と辺                        → heiko-*
+ *   ③ 展開図                         … なる/ならない・続きをかく・重なる点や辺・平行な面 → tenkai-*
+ *   ④ 見取図                         … 見えない辺は点線・続きをかく                   → mitori-*
+ *   ⑤ 位置の表し方                   … 平面（横・たて）・空間（横・たて・高さ）         → ichi-*
+ *   ⑥ いかそう                       … リボンの長さ・リボンの線                       → katsuyo-*
+ *   ⑦ まちがいさがし                 … 誤概念8つ                                      → eh-*
+ *
+ * 展開図の答え（続きの正しいかき方・重なる点や辺・向かい合う面）は、lib/solid.ts で
+ * 組み立てを計算して出す（手で書いた対応表は使わない）。
+ * 記録の名前（skillId）はレベルIDと同じ文字列にする（カタログの skill_id と一致させるため）。
  */
+import type { Question, Step, ChoiceStep, NumStep, MultiStep, Figure, LabeledPt } from './question';
+import { rnd, pick, shuffle } from './question';
+import {
+  randomNet, completions, randomHexomino, isCubeNet, boundaryPoints, oppositeFace, netBounds, normalizeNet, netLines,
+  baseFace, step as foldStep, cellsOf,
+  EDGES, FACES, edgeName, parallelEdges, perpendicularEdges, edgesPerpToFace, edgesParallelToFace, edgesOnFace,
+  oppositeOf, perpendicularFaces, hiddenEdges, vertexAt, VERTS, v3key,
+  type Dims, type Net, type FaceId, type VName, type Seg, type Pt, type Rect, type FaceState,
+} from './solid';
 
-function rnd(min: number, max: number) { return Math.floor(Math.random() * (max - min + 1)) + min; }
-function pick<T>(a: T[]): T { return a[Math.floor(Math.random() * a.length)]; }
+/* ================================================================== */
+/* 共通の部品                                                            */
+/* ================================================================== */
 
-/* =====================================================================
- * あんざん わり算
- * =================================================================== */
+const KATA = 'アイウエオカキクケコサシスセソタチツテトナニヌネノ'.split('');
+const HIRA = ['あ', 'い', 'う', 'え', 'お', 'か'];
 
-export type MentalLevel = 'mental-basic' | 'mental-rem' | 'mental-tens' | 'mental-hundreds';
+const FACE_JP: Record<FaceId, string> = { top: '上', bottom: '下', front: '前', back: 'うしろ', right: '右', left: '左' };
+const faceName = (id: FaceId): string => `面${(FACES.find((f) => f.id === id) as (typeof FACES)[number]).name}`;
 
-export const MENTAL_LEVELS: { id: MentalLevel; label: string; desc: string }[] = [
-  { id: 'mental-basic', label: '九九の はんい', desc: '48÷6 のような わりきれる わり算' },
-  { id: 'mental-rem', label: 'あまりの ある わり算', desc: '50÷7 は 7あまり1' },
-  { id: 'mental-tens', label: '何十の わり算', desc: '60÷3 や 240÷3 を 10のまとまりで' },
-  { id: 'mental-hundreds', label: '何百の わり算', desc: '600÷3 を 100のまとまりで' },
-];
-
-export interface SimpleDivProblem {
-  dividend: number;
-  divisor: number;
-  quotient: number;
-  remainder: number;
-  hint: string;
-}
-
-export function generateMental(level: MentalLevel): SimpleDivProblem {
-  switch (level) {
-    case 'mental-basic': {
-      const divisor = rnd(2, 9);
-      const quotient = rnd(2, 9);
-      const dividend = divisor * quotient;
-      return { dividend, divisor, quotient, remainder: 0, hint: `${divisor}のだんの 九九で 考えよう。${divisor} × いくつ で ${dividend} かな？` };
-    }
-    case 'mental-rem': {
-      const divisor = rnd(3, 9);
-      const quotient = rnd(2, 9);
-      const remainder = rnd(1, divisor - 1);
-      const dividend = divisor * quotient + remainder;
-      return { dividend, divisor, quotient, remainder, hint: `${divisor}のだんで ${dividend} を こえない いちばん大きい 九九を さがそう。あまりは わる数より 小さくなるよ。` };
-    }
-    case 'mental-tens': {
-      // 60÷3（6÷3 の10倍）も 240÷3（24÷3 の10倍）も「10のまとまり」で同じ考え方
-      const divisor = rnd(2, 9);
-      const q1 = rnd(2, 9);
-      const base = divisor * q1;
-      const dividend = base * 10;
-      return { dividend, divisor, quotient: q1 * 10, remainder: 0, hint: `10のまとまりで 考えよう。${base} ÷ ${divisor} = ${q1} だから、10が ${q1}こ分 → ${q1 * 10} だね。` };
-    }
-    case 'mental-hundreds': {
-      const divisor = rnd(2, 9);
-      const q1 = rnd(2, 9);
-      const dividend = divisor * q1 * 100;
-      return { dividend, divisor, quotient: q1 * 100, remainder: 0, hint: `100のまとまりで 考えよう。${dividend / 100} ÷ ${divisor} = ${q1} だから、100が ${q1}こ分だね。` };
-    }
+/** 直方体の大きさ。distinct＝3つともちがう、square＝2つが同じ（正方形の面がある） */
+function cuboidDims(kind: 'distinct' | 'square' | 'any' = 'any'): Dims {
+  const k = kind === 'any' ? (Math.random() < 0.8 ? 'distinct' : 'square') : kind;
+  for (;;) {
+    const L = rnd(3, 9), W = rnd(2, 8), H = rnd(2, 8);
+    if (k === 'distinct' && new Set([L, W, H]).size === 3) return [L, W, H];
+    if (k === 'square' && L !== W && W === H) return [L, W, H];
   }
 }
+const pickView = (): 'right' | 'left' => (Math.random() < 0.5 ? 'right' : 'left');
 
-/* =====================================================================
- * わり算のきまり
- * =================================================================== */
-
-export type RulesLevel =
-  | 'rules-tens' | 'rules-hundreds' | 'rules-rem' | 'rules-blank'
-  | 'rules-kufu' | 'rules-trap' | 'rules-equal';
-
-export const RULES_LEVELS: { id: RulesLevel; label: string; desc: string }[] = [
-  { id: 'rules-tens', label: '何十 ÷ 何十', desc: '90÷30 は 9÷3 と 同じ商' },
-  { id: 'rules-hundreds', label: '何百 ÷ 何百', desc: '2400÷600 は 24÷6 と 同じ商' },
-  { id: 'rules-rem', label: 'あまりに ちゅうい！', desc: '740÷90 の あまりは 2 じゃなくて 20' },
-  { id: 'rules-kufu', label: 'くふうして 筆算', desc: '6400÷800 は 0を消して 64÷8' },
-  { id: 'rules-trap', label: 'あまりの わなを 見ぬけ', desc: '6500÷700 の あまりは どれ？' },
-  { id: 'rules-equal', label: '商が 等しい式を さがせ', desc: '120÷60 と 同じ商の式を 2つ えらぶ' },
-  { id: 'rules-blank', label: '□に あてはまる数', desc: '72÷9 ＝ 720÷□' },
-];
-
-export interface RulesProblem {
-  kind: 'calc' | 'blank' | 'choice' | 'multi';
-  /** calc: わり算そのもの */
-  dividend: number;
-  divisor: number;
-  quotient: number;
-  remainder: number;
-  /** blank: 「a ÷ b = c ÷ □」のような式（□は1か所） */
-  exprLeft?: string;
-  exprRight?: string;
-  blankAnswer?: number;
-  /** choice: 選択肢から1つ選ぶ / multi: 2つ選ぶ */
-  choices?: string[];
-  answerIndex?: number;
-  answerIndices?: number[];
-  /** 問題文（choice / multi 用） */
-  text?: string;
-  hint: string;
-  explain?: string;
+/** 選ぶ問題を作る（正解の位置はまぜる） */
+function choice(o: {
+  label: string; prompt: string; correct: string; wrongs: { text: string; note: string }[]; why: string; hints: string[];
+}): ChoiceStep {
+  const all = shuffle([{ text: o.correct, note: null as string | null }, ...o.wrongs.map((w) => ({ text: w.text, note: w.note as string | null }))]);
+  return {
+    kind: 'choice', label: o.label, prompt: o.prompt,
+    choices: all.map((x) => x.text), correct: all.findIndex((x) => x.text === o.correct),
+    wrong: all.map((x) => x.note), why: o.why, hints: o.hints,
+  };
 }
 
-export function generateRules(level: RulesLevel): RulesProblem {
-  switch (level) {
-    case 'rules-tens': {
-      const d0 = rnd(2, 9);
-      const q = rnd(2, 9);
-      const divisor = d0 * 10;
-      const dividend = divisor * q;
-      return { kind: 'calc', dividend, divisor, quotient: q, remainder: 0, hint: `わられる数と わる数を 両方 10でわっても 商は 同じ。${dividend / 10} ÷ ${d0} で 考えよう。` };
-    }
-    case 'rules-hundreds': {
-      const d0 = rnd(2, 9);
-      const q = rnd(2, 9);
-      const divisor = d0 * 100;
-      const dividend = divisor * q;
-      return { kind: 'calc', dividend, divisor, quotient: q, remainder: 0, hint: `両方を 100でわっても 商は 同じ。${dividend / 100} ÷ ${d0} で 考えよう。` };
-    }
-    case 'rules-rem': {
-      const d0 = rnd(3, 9);
-      const q = rnd(2, 9);
-      const r0 = rnd(1, d0 - 1);
-      const divisor = d0 * 10;
-      const dividend = divisor * q + r0 * 10;
-      return {
-        kind: 'calc', dividend, divisor, quotient: q, remainder: r0 * 10,
-        hint: `${dividend / 10} ÷ ${d0} = ${q} あまり ${r0}。でも この「${r0}」は 10のまとまりが ${r0}こ という意味だから、本当の あまりは ${r0 * 10} だよ。`,
-      };
-    }
-    case 'rules-kufu': {
-      // 末尾に0のある数のわり算（0を消して筆算するくふう）。
-      // 半々で「わりきれる（6400÷800）」「あまりが出る（8200÷300=27あまり100）」を出す
-      const d0 = rnd(2, 9);
-      const divisor = d0 * 100;
-      if (Math.random() < 0.5) {
-        const q = rnd(2, 9);
-        const dividend = divisor * q;
-        return {
-          kind: 'calc', dividend, divisor, quotient: q, remainder: 0,
-          hint: `0を 2つずつ 消して ${dividend / 100} ÷ ${d0} で 計算しよう。商は 変わらないよ。`,
-          explain: `${dividend} ÷ ${divisor} は 0を消して ${dividend / 100} ÷ ${d0} ＝ ${q}。`,
-        };
-      }
-      const q = rnd(12, 32);
-      const r0 = rnd(1, d0 - 1);
-      const dividend = divisor * q + r0 * 100;
-      return {
-        kind: 'calc', dividend, divisor, quotient: q, remainder: r0 * 100,
-        hint: `0を消して ${dividend / 100} ÷ ${d0} を 筆算しよう。ただし あまりには 消した0を つけるよ（あまり ${r0} → ${r0 * 100}）。`,
-        explain: `${dividend / 100} ÷ ${d0} ＝ ${q} あまり ${r0}。あまりの ${r0} は 100が ${r0}こ分だから、答えは ${q} あまり ${r0 * 100}。`,
-      };
-    }
-    case 'rules-trap': {
-      // 6500÷700 のあまりを 3択から選ぶ（9あまり2 / 900あまり200 / 9あまり200）
-      const d0 = rnd(3, 9);
-      const q = rnd(2, 9);
-      const r0 = rnd(1, d0 - 1);
-      const divisor = d0 * 100;
-      const dividend = divisor * q + r0 * 100;
-      const correct = `${q} あまり ${r0 * 100}`;
-      const options = [
-        `${q} あまり ${r0}`,
-        `${q * 100} あまり ${r0 * 100}`,
-        correct,
-      ].sort(() => Math.random() - 0.5);
-      return {
-        kind: 'choice', dividend, divisor, quotient: q, remainder: r0 * 100,
-        text: `${dividend} ÷ ${divisor} の筆算を 0を消して しました。正しい答えは どれですか？`,
-        choices: options, answerIndex: options.indexOf(correct),
-        hint: `商は 0を消した ${dividend / 100} ÷ ${d0} と 同じ。でも あまりには 消した0を つけるよ。たしかめ算 ${divisor} × ${q} ＋ あまり ＝ ${dividend} で かくにんしよう。`,
-        explain: `${dividend / 100} ÷ ${d0} ＝ ${q} あまり ${r0}。あまりに 消した0を つけて、正しくは ${correct}。`,
-      };
-    }
-    case 'rules-equal': {
-      // 商が等しい式を2つ選ぶ（大問7型）
-      const d0 = rnd(2, 6);
-      const q = rnd(2, 9);
-      const divisor = d0 * 10;
-      const dividend = divisor * q;
-      const correct1 = `${dividend / 10} ÷ ${d0}`; // 両方を10でわった式
-      let m = rnd(1, 9) * 10;
-      if (m === divisor) m = m === 90 ? 80 : m + 10; // 問題と同じ式になるのを避ける
-      const correct2 = `${q * m} ÷ ${m}`; // 商が同じになる別の式
-      const wrong1 = `${dividend} ÷ ${d0}`; // わられる数だけ そのまま
-      const w = rnd(2, 9);
-      const wrongQ = w === q ? w + 1 : w;
-      const wrong2 = `${wrongQ * d0 * 10} ÷ ${d0 * 10}`; // 商がちがう式
-      const options = [correct1, correct2, wrong1, wrong2].sort(() => Math.random() - 0.5);
-      return {
-        kind: 'multi', dividend, divisor, quotient: q, remainder: 0,
-        text: `${dividend} ÷ ${divisor} と 商が等しい式を 2つ えらびましょう。`,
-        choices: options,
-        answerIndices: [options.indexOf(correct1), options.indexOf(correct2)].sort((a, b) => a - b),
-        hint: `${dividend} ÷ ${divisor} の商は ${q}。それぞれの式の商を たしかめて、${q} になる式を さがそう。わられる数と わる数の 両方に 同じ数を かけたり わったり しても 商は 同じだよ。`,
-        explain: `${dividend} ÷ ${divisor} ＝ ${q}。「${correct1}」と「${correct2}」も 商が ${q} で 等しいね。`,
-      };
-    }
-    case 'rules-blank': {
-      const b = rnd(2, 9);
-      const q = rnd(2, 9);
-      const a = b * q;
-      const scale = pick([10, 100]);
-      // どちらの数を□にするか
-      if (Math.random() < 0.5) {
-        // a ÷ b ＝ (a×scale) ÷ □   → □ = b×scale
-        return {
-          kind: 'blank', dividend: a, divisor: b, quotient: q, remainder: 0,
-          exprLeft: `${a} ÷ ${b}`, exprRight: `${a * scale} ÷ □`, blankAnswer: b * scale,
-          hint: `わられる数が ${scale}倍に なっているね。商を 同じにするには、わる数も ${scale}倍に しよう。`,
-        };
-      }
-      // (a×scale) ÷ (b×scale) ＝ a ÷ □ → □ = b
-      return {
-        kind: 'blank', dividend: a * scale, divisor: b * scale, quotient: q, remainder: 0,
-        exprLeft: `${a * scale} ÷ ${b * scale}`, exprRight: `${a} ÷ □`, blankAnswer: b,
-        hint: `わられる数が ${scale}分の1 に なっているね。わる数も ${scale}でわると 商は 同じだよ。`,
-      };
-    }
-  }
+function num(o: Omit<NumStep, 'kind'>): NumStep { return { kind: 'num', ...o }; }
+
+/** 辺をえらぶ問題（12本から） */
+function edgeMulti(o: { label: string; prompt: string; correct: string[]; why: string; hints: string[]; exclude?: string[]; diagnose?: (picked: string[]) => string | null }): MultiStep {
+  const options = EDGES.map(edgeName).filter((n) => !(o.exclude ?? []).includes(n)).map((n) => `辺${n}`);
+  const correct = o.correct.map((c) => options.indexOf(`辺${c}`));
+  return {
+    kind: 'multi', label: o.label, prompt: o.prompt, options, correct, why: o.why, hints: o.hints,
+    diagnose: o.diagnose ? (p) => o.diagnose!(p.map((i) => (options[i] as string).slice(1))) : undefined,
+  };
 }
 
-/* =====================================================================
- * 商の見当づけ
- * =================================================================== */
+const cuboidFig = (dims: Dims, view: 'right' | 'left', extra: Partial<Extract<Figure, { type: 'cuboid' }>> = {}): Figure =>
+  ({ type: 'cuboid', dims, view, ...extra });
 
-export type EstimateLevel = 'est-place' | 'est-digits' | 'est-round' | 'est-cond';
+/* ================================================================== */
+/* ① 面・辺・頂点                                                        */
+/* ================================================================== */
 
-export const ESTIMATE_LEVELS: { id: EstimateLevel; label: string; desc: string }[] = [
-  { id: 'est-place', label: 'どの位に たつ？', desc: '商を 立てはじめる 位を あてよう' },
-  { id: 'est-digits', label: '商は 何けた？', desc: '計算する前に けた数を 見ぬこう' },
-  { id: 'est-round', label: '仮の商の 見当', desc: '171÷21 → 21を20とみて 見当8' },
-  { id: 'est-cond', label: '□に入る数字は？', desc: '62)6□9 の商が 10より小さくなる □は？' },
-];
+export type CubePart = 'shape' | 'face' | 'edge' | 'vertex' | 'all';
 
-export interface EstimateProblem {
-  kind: 'choice' | 'value' | 'multi-digit';
-  dividend: number;
-  divisor: number;
-  text: string;
-  choices?: string[];
-  answerIndex?: number;
-  answerValue?: number;
-  /** multi-digit: □入り被除数（例 '6□9'）と、条件を満たす数字ぜんぶ */
-  dividendTemplate?: string;
-  answerDigits?: number[];
-  /** 筆算の形（わく）で表示するか */
-  bracket?: boolean;
-  hint: string;
-  explain: string; // 正解後に示す理由
+export function genKouseiCube(part: CubePart = 'all'): Question {
+  const a = rnd(1, 12);
+  const view = pickView();
+  const shape = choice({
+    label: '面の形', prompt: 'どんな形の面で かこまれて いますか。', correct: '正方形',
+    wrongs: [
+      { text: '長方形', note: '立方体の面は、4つの辺の長さが みんな 同じだよ。' },
+      { text: '三角形', note: '面の 辺の数を 数えてみよう。' },
+      { text: 'ひし形', note: '面の 角は みんな 直角だよ。' },
+    ],
+    why: '立方体は、正方形だけで かこまれた 形。6つの 面は みんな 同じ 大きさの 正方形だよ。',
+    hints: ['1つの 面の 辺の 長さを くらべよう。', '角は みんな 直角。辺の 長さは みんな 同じ。', '辺の長さが ぜんぶ 同じで、角が 直角の 四角形は？'],
+  });
+  const face = num({
+    label: '面', prompt: '面は いくつ ありますか。', answer: 6, unit: 'つ',
+    hints: ['見えて いる 面は 3つ。うしろ・下・横にも 面が あるよ。', 'さいころを 思い出そう。目は 1〜何まで ある？', '上と下、前とうしろ、右と左。'],
+    diagnose: (v) => (v === 3 ? '見えて いる 面は 3つ。見えない うしろ・下・横の 面も 数えよう。' : null),
+  });
+  const edge = num({
+    label: '辺', prompt: '辺は いくつ ありますか。', answer: 12, unit: '',
+    hints: ['見えない 辺（点線の 辺）も 数えよう。', '上の 面の まわりに 4本、下の 面の まわりに 4本。', '上と下を つなぐ たての 辺も 4本。'],
+    diagnose: (v) => (v === 9 ? '見えて いる 辺だけ 数えて いないかな？ 見えない 辺（点線）も 数えよう。' : v === 8 ? '上と下の 面の まわりだけで なく、たての 辺も あるよ。' : v === 6 ? 'それは 面の 数。辺は 面と 面の さかいめの 線だよ。' : null),
+  });
+  const vertex = num({
+    label: '頂点', prompt: '頂点は いくつ ありますか。', answer: 8, unit: 'つ',
+    hints: ['頂点は、辺と 辺が 集まる 角の 点。', '上の 面に 4つ、下の 面に 4つ。', '見えない 頂点も 1つ あるよ。'],
+    diagnose: (v) => (v === 7 ? '見えない 頂点（かくれて いる 角）も 数えよう。' : v === 4 ? '上の 面の 角だけで なく、下の 面の 角も あるよ。' : null),
+  });
+  const steps: Step[] = part === 'all' ? [shape, face, edge, vertex] : [{ shape, face, edge, vertex }[part]];
+  return {
+    skillId: 'kousei-cube', title: '立方体の 面・辺・頂点', emoji: '🎲',
+    text: `下の 立方体（1辺 ${a}cm）に ついて 答えましょう。`,
+    figure: cuboidFig([a, a, a], view, { dimLabels: true }),
+    steps,
+    summary: '立方体は 正方形 6つで かこまれた 形。面 6つ・辺 12・頂点 8つ。',
+    label: `立方体（1辺${a}cm）`, q: `立方体の ${part === 'all' ? '面の形・面・辺・頂点の数' : steps[0]!.label}`, a: part === 'shape' ? '正方形' : part === 'face' ? '6つ' : part === 'edge' ? '12' : part === 'vertex' ? '8つ' : '正方形・6・12・8',
+  };
 }
 
-const PLACE_NAMES = ['百の位', '十の位', '一の位'];
+export type CuboidPart = 'faces' | 'edges' | 'all';
 
-/** 商が立ちはじめる位（3桁筆算基準: 0=百,1=十,2=一） */
-function firstQuotientPlace(dividend: number, divisor: number): number {
-  const s = dividend.toString();
-  let cur = 0;
-  for (let i = 0; i < s.length; i++) {
-    cur = cur * 10 + Number(s[i]);
-    if (cur >= divisor) return 3 - s.length + i;
-  }
-  return 2;
-}
-
-export function generateEstimate(level: EstimateLevel): EstimateProblem {
-  switch (level) {
-    case 'est-place': {
-      const variant = pick(['2-2', '3-2', '3-2', '3-1', '3-3'] as const);
-      let dividend = 0, divisor = 0;
-      if (variant === '2-2') { divisor = rnd(12, 89); dividend = rnd(divisor + 1, 99); }
-      else if (variant === '3-1') { divisor = rnd(2, 9); dividend = rnd(102, 999); }
-      else if (variant === '3-3') { divisor = rnd(110, 320); dividend = rnd(divisor + 1, 999); }
-      else { divisor = rnd(12, 89); dividend = rnd(120, 999); }
-      const place = firstQuotientPlace(dividend, divisor);
-      const choices = dividend >= 100 && divisor < 10 ? PLACE_NAMES : PLACE_NAMES.slice(1);
-      const answerIndex = dividend >= 100 && divisor < 10 ? place : place - 1;
-      const head = dividend.toString().slice(0, place - (3 - dividend.toString().length) + 1);
-      return {
-        kind: 'choice', dividend, divisor, bracket: true,
-        text: `このわり算の商は、何の位から たちますか？`,
-        choices, answerIndex,
-        hint: `いちばん大きい位から じゅんに「${divisor} が入るかな？」と くらべてみよう。`,
-        explain: `${head} の中に ${divisor} が入るから、${choices[answerIndex]}から 商が たつよ。`,
-      };
-    }
-    case 'est-digits': {
-      const variant = pick(['3-1', '3-1', '2-1', '3-2'] as const);
-      let dividend = 0, divisor = 0;
-      if (variant === '2-1') { divisor = rnd(2, 9); dividend = rnd(12, 99); }
-      else if (variant === '3-1') { divisor = rnd(2, 9); dividend = rnd(102, 999); }
-      else { divisor = rnd(12, 89); dividend = rnd(120, 999); }
-      const q = Math.floor(dividend / divisor);
-      const digits = q.toString().length;
-      const choices = ['1けた', '2けた', '3けた'];
-      return {
-        kind: 'choice', dividend, divisor,
-        text: `${dividend} ÷ ${divisor} の商は、何けたに なりますか？`,
-        choices, answerIndex: digits - 1,
-        hint: `商が たちはじめる 位が わかれば、けた数も わかるよ。`,
-        explain: `商は ${q}（${digits}けた）。たちはじめる位から 一の位まで 商が ならぶよ。`,
-      };
-    }
-    case 'est-round': {
-      // 商が1けたになる ÷2けた。四捨五入して「何十」とみて見当をつける
-      const divisor = rnd(12, 89);
-      const rounded = Math.max(10, Math.round(divisor / 10) * 10);
-      const q = rnd(2, 9);
-      const r = rnd(0, divisor - 1);
-      const dividend = divisor * q + r;
-      if (dividend > 999) return generateEstimate(level);
-      const est = Math.floor(Math.floor(dividend / 10) / (rounded / 10));
-      if (est < 1 || est > 9) return generateEstimate(level);
-      return {
-        kind: 'value', dividend, divisor,
-        text: `「${dividend} ÷ ${divisor}」${divisor} を ${rounded} とみると、商の見当は いくつですか？`,
-        answerValue: est,
-        hint: `${rounded} は 10が ${rounded / 10}こ。${dividend} は 10が だいたい ${Math.floor(dividend / 10)}こ。${Math.floor(dividend / 10)} ÷ ${rounded / 10} で 考えよう。`,
-        explain: `${Math.floor(dividend / 10)} ÷ ${rounded / 10} で 見当は ${est}。見当が ずれていたら「大きすぎ→1へらす」「あまりが大きい→1ふやす」で直せば OK！`,
-      };
-    }
-    case 'est-cond': {
-      // 62)6□9 で「商が10より小さくなる □ ぜんぶ」（大問9型）
-      const t = rnd(1, 9);       // わる数の十の位 ＝ わられる数の百の位
-      const o = rnd(1, 4);       // わる数の一の位（答えの個数 = o 個になる）
-      const u = rnd(0, 9);       // わられる数の一の位
-      const divisor = t * 10 + o;
-      const template = `${t}□${u}`;
-      // 商が10より小さい ⇔ わられる数 < わる数×10 ⇔ t□u < t{o}0 ⇔ □ ≦ o-1
-      const answerDigits = Array.from({ length: o }, (_, i) => i);
-      return {
-        kind: 'multi-digit', dividend: t * 100 + u, divisor, bracket: true,
-        dividendTemplate: template,
-        text: `このわり算で、商が 10より小さくなるのは、□が どんな数字の ときですか？あてはまる数字を ぜんぶ えらびましょう。`,
-        answerDigits,
-        hint: `商が 10より小さい ⇔ わられる数が「わる数 × 10 ＝ ${divisor * 10}」より 小さい ということ。${template} が ${divisor * 10} より小さくなる □ を さがそう。`,
-        explain: `${divisor} × 10 ＝ ${divisor * 10}。${template} ＜ ${divisor * 10} になるのは □ が ${answerDigits.join('・')} のとき。このとき 商は 十の位に たたないよ。`,
-      };
-    }
-  }
-}
-
-/* =====================================================================
- * たしかめ算（検算）
- * =================================================================== */
-
-export type CheckLevel = 'check-nodiv' | 'check-rem' | 'check-big' | 'check-shiki' | 'check-findnum';
-
-export const CHECK_LEVELS: { id: CheckLevel; label: string; desc: string }[] = [
-  { id: 'check-nodiv', label: 'わりきれる とき', desc: 'わる数 × 商 ＝ わられる数' },
-  { id: 'check-rem', label: 'あまりの ある とき', desc: 'わる数 × 商 ＋ あまり ＝ わられる数' },
-  { id: 'check-big', label: '大きな数で ちょうせん', desc: '3けたの わり算を たしかめよう' },
-  { id: 'check-shiki', label: 'けん算の式を 書く', desc: '997÷49＝20あまり17 → □×20＋□＝□' },
-  { id: 'check-findnum', label: 'ある数を もとめる', desc: 'けん算の式で「ある数」を さがせ！' },
-];
-
-export interface CheckProblem {
-  kind: 'fill' | 'findnum';
-  dividend: number;
-  divisor: number;
-  quotient: number;
-  remainder: number;
-  /** fill: 空らんにする場所。'qr'=商とあまり / 'shiki'=わる数・あまり・わられる数（商は見えている） */
-  variant?: 'qr' | 'shiki';
-  /** 順番にうめる空らんの正解 */
-  blanks: number[];
-  blankLabels: string[];
-  /** findnum: ある数（dividend）を べつの数でわる 2段階問題 */
-  secondDivisor?: number;
-  secondQuotient?: number;
-  secondRemainder?: number;
-  hint: string;
-}
-
-export function generateCheck(level: CheckLevel): CheckProblem {
-  if (level === 'check-findnum') {
-    // ある数を a でわったら 商 q あまり r。この数を b でわった答えは？（大問13型）
-    for (let i = 0; i < 500; i++) {
-      const a = rnd(21, 45);
-      const q = rnd(12, 29);
-      const r = rnd(1, a - 1);
-      const n = a * q + r;
-      if (n > 999) continue;
-      let b = rnd(21, 45);
-      if (b === a) b = b === 45 ? 44 : b + 1;
-      return {
-        kind: 'findnum',
-        dividend: n, divisor: a, quotient: q, remainder: r,
-        variant: 'qr',
-        blanks: [n],
-        blankLabels: ['ある数'],
-        secondDivisor: b,
-        secondQuotient: Math.floor(n / b),
-        secondRemainder: n % b,
-        hint: `けん算の式「わる数 × 商 ＋ あまり ＝ わられる数」を使うと、ある数 ＝ ${a} × ${q} ＋ ${r} で もとめられるよ。`,
-      };
-    }
-  }
-  if (level === 'check-shiki') {
-    // けん算の式を書く: わる数・あまり・わられる数をうめる（商は見えている。大問5型）
-    const divisor = rnd(21, 49);
-    const quotient = rnd(12, 29);
-    const remainder = rnd(1, divisor - 1);
-    const dividend = divisor * quotient + remainder;
-    if (dividend > 999) return generateCheck(level);
+export function genKouseiCuboid(part: CuboidPart = 'all'): Question {
+  const p = part === 'all' ? (Math.random() < 0.5 ? 'faces' : 'edges') : part;
+  const dims = p === 'edges' ? cuboidDims('distinct') : cuboidDims('any');
+  const [L, W, H] = dims;
+  const view = pickView();
+  const fig = cuboidFig(dims, view, { dimLabels: true });
+  const intro = `下の 直方体（横 ${L}cm、たて ${W}cm、高さ ${H}cm）に ついて 答えましょう。`;
+  if (p === 'faces') {
+    const pairs: [number, number][] = [[W, L], [H, L], [H, W]];
+    const [a, b] = pick(pairs);
+    const count = pairs.filter(([x, y]) => (x === a && y === b) || (x === b && y === a)).length * 2;
+    const prompt = a === b ? `1辺 ${a}cm の 正方形の 面は いくつ ありますか。` : `たて ${a}cm、横 ${b}cm の 長方形の 面は いくつ ありますか。`;
     return {
-      kind: 'fill', variant: 'shiki',
-      dividend, divisor, quotient, remainder,
-      blanks: [divisor, remainder, dividend],
-      blankLabels: ['わる数', 'あまり', 'わられる数'],
-      hint: `けん算の式は「わる数 × 商 ＋ あまり ＝ わられる数」。もとの式 ${dividend} ÷ ${divisor} ＝ ${quotient} あまり ${remainder} から、どの数が どこに入るか 考えよう。`,
+      skillId: 'kousei-cuboid', title: '直方体の 面', emoji: '📦', text: intro, figure: fig,
+      steps: [num({
+        label: '面の数', prompt, answer: count, unit: 'つ',
+        hints: ['向かい合う 面は、同じ 形・同じ 大きさ。', `${a}cm と ${b}cm の 辺で かこまれた 面を、見えない 面も ふくめて さがそう。`, '前と うしろ、上と 下、右と 左 が 同じ 形だよ。'],
+        diagnose: (v) => (v === count / 2 ? '向かい合う 面も 同じ 形だよ。見えない 面も 数えよう。' : null),
+      })],
+      summary: `直方体の 向かい合う 面は 同じ 形。${a === b ? `正方形の 面は ${count}つ` : `たて${a}cm・横${b}cm の 面は ${count}つ`}。`,
+      label: `直方体 ${L}×${W}×${H} の面`, q: prompt.replace('ありますか。', ''), a: `${count}つ`,
     };
   }
-  let divisor = 0, quotient = 0, remainder = 0;
-  if (level === 'check-nodiv') {
-    divisor = rnd(2, 9);
-    quotient = rnd(12, 24);
-    remainder = 0;
-  } else if (level === 'check-rem') {
-    divisor = rnd(3, 9);
-    quotient = rnd(12, 24);
-    remainder = rnd(1, divisor - 1);
+  return {
+    skillId: 'kousei-cuboid', title: '直方体の 等しい辺', emoji: '📦', text: intro, figure: fig,
+    steps: [
+      num({
+        label: 'いくつずつ', prompt: '長さの 等しい 辺は、いくつずつ ありますか。', answer: 4, unit: 'つずつ',
+        hints: [`${L}cm の 辺を、見えない 辺も ふくめて 数えよう。`, '同じ 向きの 辺は、同じ 長さ。', '上の 面に 2本、下の 面に 2本。'],
+        diagnose: (v) => (v === 2 ? '見えない 辺や、下の 面の 辺も 数えよう。同じ 向きの 辺は 何本 ある？' : v === 3 ? 'それは 組の 数かな？ 1つの 長さの 辺が 何本 あるかを 答えよう。' : null),
+      }),
+      num({
+        label: '何組', prompt: '長さの 等しい 辺は、何組 ありますか。', answer: 3, unit: '組',
+        hints: ['辺の 長さは 何種類 ある？', `${L}cm・${W}cm・${H}cm。`, '長さが 3種類だから…'],
+        diagnose: (v) => (v === 4 ? 'それは 1組の 辺の 数。長さの 種類が いくつ あるかを 数えよう。' : null),
+      }),
+    ],
+    summary: `${L}cm・${W}cm・${H}cm の 辺が 4本ずつ、3組 ある（4×3＝12本）。`,
+    label: `直方体 ${L}×${W}×${H} の辺`, q: '長さの等しい辺は いくつずつ何組', a: '4つずつ 3組',
+  };
+}
+
+export function genKouseiHigo(): Question {
+  const cube = Math.random() < 0.25;
+  const dims: Dims = cube ? (() => { const a = rnd(3, 12); return [a, a, a] as Dims; })() : cuboidDims('distinct');
+  const [L, W, H] = dims;
+  const view = pickView();
+  const steps: Step[] = cube
+    ? [num({
+        label: `${L}cmのひご`, prompt: `${L}cm の ひごは 何本 いりますか。`, answer: 12, unit: '本',
+        hints: ['立方体は、辺が みんな 同じ 長さ。', 'ひご 1本が 辺 1本。', '辺の 数は いくつ？'],
+        diagnose: (v) => (v === 9 ? '見えない 辺の ぶんも ひごが いるよ。' : null),
+      })]
+    : [L, W, H].map((d, i) => num({
+        label: `${d}cmのひご`, prompt: `${d}cm の ひごは 何本 いりますか。`, answer: 4, unit: '本',
+        hints: ['ひご 1本が 辺 1本。', `${d}cm の 辺は、同じ 向きに ならんで いるよ。`, i === 0 ? '上の 面に 2本、下の 面に 2本。' : '見えない 辺も 数えよう。'],
+        diagnose: (v) => (v === 2 ? '見えない 辺や 下の 面の 辺の ぶんも いるよ。' : v === 3 ? '見えない 辺の ぶんも 1本 いるよ。' : null),
+      }));
+  steps.push(num({
+    label: 'ねん土玉', prompt: 'ねん土玉は いくつ いりますか。', answer: 8, unit: 'こ',
+    hints: ['ねん土玉は、ひごと ひごを つなぐ 角（頂点）に つける。', '頂点の 数を 数えよう。', '上に 4つ、下に 4つ。'],
+    diagnose: (v) => (v === 7 ? '見えない 頂点にも ねん土玉が いるよ。' : v === 12 ? 'それは ひごの 本数。ねん土玉は 頂点の 数だよ。' : null),
+  }));
+  return {
+    skillId: 'kousei-higo', title: 'ひごと ねん土玉で 作る', emoji: '🥢',
+    text: `ひごと ねん土玉で、${cube ? `1辺 ${L}cm の 立方体` : `横 ${L}cm、たて ${W}cm、高さ ${H}cm の 直方体`}の 形を 作ります。`,
+    figure: cuboidFig(dims, view, { dimLabels: true }),
+    steps,
+    summary: cube ? `ひごは 辺の数で 12本、ねん土玉は 頂点の数で 8こ。` : `${L}cm・${W}cm・${H}cm の ひごが 4本ずつ、ねん土玉は 頂点の 数の 8こ。`,
+    label: cube ? `立方体${L}cm を ひごで` : `直方体 ${L}×${W}×${H} を ひごで`,
+    q: 'ひごの本数と ねん土玉の数', a: cube ? '12本・8こ' : '4本ずつ・8こ',
+  };
+}
+
+export type PaperVariant = 'abc' | 'square' | 'any';
+
+/** 紙のテスト 大問9: 厚紙を何まいずつ使って直方体を作るか */
+export function genKouseiPaper(variant: PaperVariant = 'any'): Question {
+  const v = variant === 'any' ? (Math.random() < 0.5 ? 'abc' : 'square') : variant;
+  const nums = shuffle([4, 5, 6, 7, 8, 9, 10]).slice(0, 3).sort((x, y) => x - y);
+  const [a, b, c] = nums as [number, number, number];
+  // 紙のテストと同じ組: (a×c) (c×c) (a×b) (b×c)。並び（あいうえ）はまぜる
+  const kinds = shuffle([
+    { key: 'ac', w: a, h: c }, { key: 'cc', w: c, h: c }, { key: 'ab', w: a, h: b }, { key: 'bc', w: b, h: c },
+  ]).map((k) => (Math.random() < 0.5 ? k : { ...k, w: k.h, h: k.w }));
+  const lab: Record<string, string> = {};
+  kinds.forEach((k, i) => { lab[k.key] = HIRA[i] as string; });
+  const cards = kinds.map((k) => ({ label: lab[k.key] as string, w: k.w, h: k.h }));
+  const sz = (key: string) => { const k = kinds.find((x) => x.key === key)!; return `${k.w}cm×${k.h}cm`; };
+  let given: string, answerKey: string;
+  if (v === 'abc') {
+    const order = shuffle(['ac', 'ab', 'bc']);
+    given = `${lab[order[0]!]}の あつ紙を 2まい、${lab[order[1]!]}の あつ紙を 2まい 使うと`;
+    answerKey = order[2]!;
   } else {
-    if (Math.random() < 0.5) {
-      divisor = rnd(3, 9);
-      quotient = rnd(102, 320);
-    } else {
-      divisor = rnd(12, 39);
-      quotient = rnd(12, 40);
-    }
-    remainder = rnd(1, divisor - 1);
+    const four = pick(['ac', 'bc']);
+    given = `${lab[four]}の あつ紙を 4まい 使うと`;
+    answerKey = 'cc';
   }
-  const dividend = divisor * quotient + remainder;
-  const blanks = remainder > 0 ? [quotient, remainder, dividend] : [quotient, dividend];
-  const blankLabels = remainder > 0 ? ['商', 'あまり', 'わられる数'] : ['商', 'わられる数'];
+  const ans = lab[answerKey] as string;
+  const wrongs = kinds.filter((k) => k.key !== answerKey).map((k) => ({
+    text: lab[k.key] as string,
+    note: v === 'abc' && k.key === 'cc' ? `${sz('cc')} の 正方形の 面は、この 直方体には ないよ。辺の 長さを たしかめよう。`
+      : v === 'square' && k.key !== 'cc' ? `その 形を 足すと、辺の 長さが 合わない ところが できるよ。のこりの 2つの 面の 辺の 長さを 考えよう。`
+        : 'その あつ紙は もう 使って いるよ。のこりの 面の 形を 考えよう。',
+  }));
   return {
-    kind: 'fill', variant: 'qr',
-    dividend, divisor, quotient, remainder, blanks, blankLabels,
-    hint: remainder > 0
-      ? `たしかめ算は「わる数 × 商 ＋ あまり ＝ わられる数」。${divisor} × ${quotient} を 計算してから ${remainder} を たそう。`
-      : `たしかめ算は「わる数 × 商 ＝ わられる数」。${divisor} × ${quotient} を 計算しよう。`,
+    skillId: 'kousei-paper', title: 'あつ紙で 直方体を 作る', emoji: '🟩',
+    text: `下の 図のような あつ紙を 何まいかずつ 使って、直方体を 作ります。\n${given}、あと、どの あつ紙を 何まい 使えば よいですか。`,
+    figure: { type: 'cards', cards },
+    steps: [
+      choice({
+        label: 'あつ紙', prompt: 'どの あつ紙を 使えば よいですか。', correct: ans, wrongs,
+        why: v === 'abc' ? '直方体は、同じ 形の 面が 2まいずつ 3組。のこりの 1組は、使って いない 2つの 長さで できる 面だよ。'
+          : '同じ 長方形が 4まいなら、のこりの 2まいは、長方形の 長い ほう（または 同じ長さ）の 辺で できる 正方形に なるよ。',
+        hints: ['直方体の 面は、向かい合う 面が 同じ 形。', 'のこりの 面の 辺は、もう 使った 面の 辺と くっつくよ。辺の 長さを くらべよう。', v === 'abc' ? `${a}cm・${b}cm・${c}cm の 3つの 長さで、まだ 使って いない 組み合わせは？` : '箱の 両はしの 面は どんな 形？'],
+      }),
+      num({
+        label: 'まい数', prompt: `${ans}の あつ紙を 何まい 使えば よいですか。`, answer: 2, unit: 'まい',
+        hints: ['面は ぜんぶで 6まい。', 'もう 4まい 使って いるよ。', '向かい合う 2つの 面。'],
+        diagnose: (x) => (x === 1 ? '向かい合う 面が あるので、同じ 形が 2まい いるよ。' : x === 4 ? '面は ぜんぶで 6まい。もう 4まい 使って いるよ。' : null),
+      }),
+    ],
+    summary: `${ans}（${sz(answerKey)}）を 2まい。直方体は 同じ形の面が 2まいずつ。`,
+    label: `あつ紙 ${a}・${b}・${c}cm`, q: `${given}、あとどのあつ紙を何まい`, a: `${ans}を2まい`,
   };
 }
 
-/* =====================================================================
- * 文章題
- * =================================================================== */
-
-export type WordLevel = 'wp-share' | 'wp-group' | 'wp-rem' | 'wp-up' | 'wp-down' | 'wp-times' | 'wp-big';
-
-export const WORD_LEVELS: { id: WordLevel; label: string; desc: string }[] = [
-  { id: 'wp-share', label: '同じ数ずつ 分ける', desc: '1人分は 何こ？（等分除）' },
-  { id: 'wp-group', label: 'いくつ分 とれる？', desc: '何ふくろ できる？（包含除）' },
-  { id: 'wp-rem', label: 'あまりの ある もんだい', desc: '商と あまりを 答えよう' },
-  { id: 'wp-up', label: 'あまりを 切り上げる', desc: 'ぜんいん のれるには あと1つ！' },
-  { id: 'wp-down', label: 'あまりを 切り捨てる', desc: 'あまりでは 1つ 作れない…' },
-  { id: 'wp-times', label: '何倍かを もとめる', desc: '320kgは 64kgの 何倍？' },
-  { id: 'wp-big', label: '大きな数の もんだい', desc: '2けたで わる 文章題' },
-];
-
-export interface DivWordProblem {
-  text: string;
-  emoji: string;
-  dividend: number;
-  divisor: number;
-  choices: string[];
-  correctIndex: number;
-  quotient: number;
-  remainder: number;
-  /** 商・あまりを出したあとの最終回答の種類 */
-  finalKind: 'quotient' | 'quot-rem' | 'up' | 'down';
-  finalAnswer: number;
-  finalUnit: string;
-  finalPrompt: string;
-  why: string;
-  finalWhy: string;
+export function genKouseiSort(): Question {
+  const r = Math.random();
+  const dims: Dims = r < 0.4 ? (() => { const a = rnd(2, 9); return [a, a, a] as Dims; })() : cuboidDims(r < 0.6 ? 'square' : 'distinct');
+  const isCube = dims[0] === dims[1] && dims[1] === dims[2];
+  const ask = pick(['面', '辺', '頂点'] as const);
+  const ans = { 面: 6, 辺: 12, 頂点: 8 }[ask];
+  const what = isCube ? '立方体' : '直方体';
+  return {
+    skillId: 'kousei-sort', title: '直方体と 立方体', emoji: '🧊',
+    text: `下の 形（${dims[0]}cm、${dims[1]}cm、${dims[2]}cm）に ついて 答えましょう。`,
+    figure: cuboidFig(dims, pickView(), { dimLabels: true }),
+    steps: [
+      choice({
+        label: '名前', prompt: 'この 形を 何と いいますか。', correct: what,
+        wrongs: [{ text: isCube ? '直方体' : '立方体', note: isCube ? '正方形だけで かこまれた 形は、とくべつな 名前が あるよ。' : '長方形が ある（辺の 長さが ちがう）ね。正方形だけで かこまれて いるかな？' }],
+        why: isCube ? '正方形だけで かこまれた 形を 立方体と いう。' : '長方形だけ、または 長方形と 正方形で かこまれた 形を 直方体と いう。',
+        hints: ['面の 形を 見よう。', '辺の 長さは みんな 同じ？', '正方形だけ → 立方体、長方形が ある → 直方体。'],
+      }),
+      num({
+        label: `${ask}の数`, prompt: `${ask}は いくつ ありますか。`, answer: ans, unit: ask === '辺' ? '' : 'つ',
+        hints: ['見えない ところも 数えよう。', ask === '面' ? '上・下・前・うしろ・右・左。' : ask === '辺' ? '上の 面に 4本、下の 面に 4本、たてに 4本。' : '上に 4つ、下に 4つ。', `直方体も 立方体も、${ask}の 数は 同じ。`],
+        diagnose: (v) => ((ask === '面' && v === 3) || (ask === '辺' && v === 9) || (ask === '頂点' && v === 7) ? '見えない ところも 数えよう。' : null),
+      }),
+    ],
+    summary: `${what}。直方体も 立方体も 面 6・辺 12・頂点 8。`,
+    label: `${what}の 見分け`, q: `${dims.join('cm,')}cm の形の名前と${ask}の数`, a: `${what}・${ans}`,
+  };
 }
 
-function buildDivChoices(a: number, b: number): { choices: string[]; correctIndex: number } {
-  const options = [`${a} ÷ ${b}`, `${b} ÷ ${a}`, `${a} × ${b}`].sort(() => Math.random() - 0.5);
-  return { choices: options, correctIndex: options.indexOf(`${a} ÷ ${b}`) };
-}
+/* ================================================================== */
+/* ② 平行・垂直                                                          */
+/* ================================================================== */
 
-export function generateWord(level: WordLevel): DivWordProblem {
-  switch (level) {
-    case 'wp-share': {
-      const per = rnd(12, 25);
-      const people = rnd(3, 6);
-      const total = per * people;
-      const item = pick([
-        { name: '色紙', unit: 'まい', emoji: '🎨' },
-        { name: 'あめ', unit: 'こ', emoji: '🍬' },
-        { name: 'カード', unit: 'まい', emoji: '🃏' },
-        { name: 'ビー玉', unit: 'こ', emoji: '🔮' },
-      ]);
-      const c = buildDivChoices(total, people);
-      return {
-        text: `${item.name}が ${total}${item.unit} あります。${people}人で 同じ数ずつ 分けると、1人分は 何${item.unit}に なりますか？`,
-        emoji: item.emoji, dividend: total, divisor: people, ...c,
-        quotient: per, remainder: 0, finalKind: 'quotient', finalAnswer: per, finalUnit: item.unit,
-        finalPrompt: `1人分は 何${item.unit}？`,
-        why: `「同じ数ずつ 分ける・1人分」は わり算（等分除）だよ。ぜんぶの数 ÷ 人数 だね。`,
-        finalWhy: `${total} ÷ ${people} = ${per}。1人分は ${per}${item.unit} だね。`,
-      };
-    }
-    case 'wp-group': {
-      const size = rnd(3, 9);
-      const count = rnd(12, 25);
-      const total = size * count;
-      const item = pick([
-        { name: 'クッキー', pack: 'ふくろ', unit: 'こ', emoji: '🍪' },
-        { name: 'たまご', pack: 'パック', unit: 'こ', emoji: '🥚' },
-        { name: '花', pack: 'たば', unit: '本', emoji: '💐' },
-      ]);
-      const c = buildDivChoices(total, size);
-      return {
-        text: `${item.name}が ${total}${item.unit} あります。1${item.pack}に ${size}${item.unit}ずつ 入れると、何${item.pack} できますか？`,
-        emoji: item.emoji, dividend: total, divisor: size, ...c,
-        quotient: count, remainder: 0, finalKind: 'quotient', finalAnswer: count, finalUnit: item.pack,
-        finalPrompt: `何${item.pack} できる？`,
-        why: `「${size}${item.unit}ずつ とっていくと いくつ分？」も わり算（包含除）だよ。`,
-        finalWhy: `${total} ÷ ${size} = ${count}。${count}${item.pack} できるね。`,
-      };
-    }
-    case 'wp-rem': {
-      const people = rnd(4, 8);
-      const per = rnd(8, 24);
-      const r = rnd(1, people - 1);
-      const total = people * per + r;
-      const item = pick([
-        { name: 'いちご', unit: 'こ', emoji: '🍓' },
-        { name: 'おり紙', unit: 'まい', emoji: '📄' },
-        { name: 'クリップ', unit: 'こ', emoji: '📎' },
-      ]);
-      const c = buildDivChoices(total, people);
-      return {
-        text: `${item.name}が ${total}${item.unit} あります。${people}人で 同じ数ずつ 分けると、1人分は 何${item.unit}で、何${item.unit} あまりますか？`,
-        emoji: item.emoji, dividend: total, divisor: people, ...c,
-        quotient: per, remainder: r, finalKind: 'quot-rem', finalAnswer: per, finalUnit: item.unit,
-        finalPrompt: `1人分と あまりは？`,
-        why: `「同じ数ずつ 分ける」は わり算。わりきれない分が「あまり」に なるよ。`,
-        finalWhy: `${total} ÷ ${people} = ${per} あまり ${r}。1人分は ${per}${item.unit}で、${r}${item.unit} あまるね。たしかめ算：${people} × ${per} ＋ ${r} ＝ ${total}。`,
-      };
-    }
-    case 'wp-up': {
-      const cap = rnd(3, 6);
-      const q = rnd(6, 12);
-      const r = rnd(1, cap - 1);
-      const total = cap * q + r;
-      const scene = pick([
-        { text: (t: number, c2: number) => `${t}人の 子どもが、${c2}人ずつ 長いすに すわります。ぜんいんが すわるには、長いすは 何きゃく いりますか？`, unit: 'きゃく', emoji: '🪑', prompt: '長いすは 何きゃく いる？', why2: 'あまりの 人も すわれるように、長いすを もう1きゃく ふやそう。' },
-        { text: (t: number, c2: number) => `${t}人が ${c2}人乗りの ボートに 乗ります。ぜんいんが 乗るには、ボートは 何そう いりますか？`, unit: 'そう', emoji: '🚣', prompt: 'ボートは 何そう いる？', why2: 'あまりの 人も 乗れるように、ボートを もう1そう ふやそう。' },
-        { text: (t: number, c2: number) => `ケーキが ${t}こ あります。1つの 箱に ${c2}こずつ 入れます。ぜんぶの ケーキを 入れるには、箱は 何箱 いりますか？`, unit: '箱', emoji: '🎂', prompt: '箱は 何箱 いる？', why2: 'あまりの ケーキも 入れるために、箱を もう1箱 ふやそう。' },
-      ]);
-      const c = buildDivChoices(total, cap);
-      return {
-        text: scene.text(total, cap),
-        emoji: scene.emoji, dividend: total, divisor: cap, ...c,
-        quotient: q, remainder: r, finalKind: 'up', finalAnswer: q + 1, finalUnit: scene.unit,
-        finalPrompt: scene.prompt,
-        why: `「${cap}ずつに 分けると いくつ分？」だから わり算だよ。`,
-        finalWhy: `${total} ÷ ${cap} = ${q} あまり ${r}。${scene.why2} だから 答えは ${q + 1}${scene.unit}！`,
-      };
-    }
-    case 'wp-down': {
-      const size = rnd(3, 8);
-      const q = rnd(6, 12);
-      const r = rnd(1, size - 1);
-      const total = size * q + r;
-      const scene = pick([
-        { text: (t: number, s: number) => `${t}cmの リボンから、${s}cmの リボンを 何本 切り取れますか？`, unit: '本', emoji: '🎀', prompt: '何本 切り取れる？', why2: `あまりの ${r}cmでは ${size}cmの リボンは 作れないね。` },
-        { text: (t: number, s: number) => `${t}この おかしを、1ふくろに ${s}こずつ 入れて 売ります。売れる ふくろは 何ふくろ できますか？`, unit: 'ふくろ', emoji: '🍭', prompt: '何ふくろ できる？', why2: `あまりの ${r}こでは 1ふくろに ならないね。` },
-        { text: (t: number, s: number) => `${t}ページの 本を、1日 ${s}ページずつ 読みます。${s}ページ きっちり 読める日は 何日 ありますか？`, unit: '日', emoji: '📖', prompt: '何日 ある？', why2: `あまりの ${r}ページの 日は ${size}ページに たりないね。` },
-      ]);
-      const c = buildDivChoices(total, size);
-      return {
-        text: scene.text(total, size),
-        emoji: scene.emoji, dividend: total, divisor: size, ...c,
-        quotient: q, remainder: r, finalKind: 'down', finalAnswer: q, finalUnit: scene.unit,
-        finalPrompt: scene.prompt,
-        why: `「${size}ずつに 分けると いくつ分？」だから わり算だよ。`,
-        finalWhy: `${total} ÷ ${size} = ${q} あまり ${r}。${scene.why2} だから 答えは ${q}${scene.unit}（あまりは 切り捨て）！`,
-      };
-    }
-    case 'wp-times': {
-      // 何倍かを もとめる（大問12型）: くらべられる量 ÷ もとにする量
-      const base = rnd(14, 96);
-      const k = rnd(3, 9);
-      const big = base * k;
-      const scene = pick([
-        { text: `生まれたときの 馬の体重は ${base}kgでしたが、1年後には ${big}kgに なりました。1年後の体重は、生まれたときの体重の 何倍ですか？`, emoji: '🐴' },
-        { text: `芽が出たときの ヒマワリの高さは ${base}cmでしたが、夏には ${big}cmに なりました。夏の高さは、芽が出たときの 何倍ですか？`, emoji: '🌻' },
-        { text: `先月の 図書室の かし出しは ${base}さつでしたが、今月は ${big}さつでした。今月の かし出しは、先月の 何倍ですか？`, emoji: '📚' },
-      ]);
-      const options = [`${big} ÷ ${base}`, `${base} ÷ ${big}`, `${big} − ${base}`].sort(() => Math.random() - 0.5);
-      return {
-        text: scene.text,
-        emoji: scene.emoji, dividend: big, divisor: base,
-        choices: options, correctIndex: options.indexOf(`${big} ÷ ${base}`),
-        quotient: k, remainder: 0, finalKind: 'quotient', finalAnswer: k, finalUnit: '倍',
-        finalPrompt: '何倍？',
-        why: `「何倍か」を もとめるときは、くらべられる量 ÷ もとにする量 の わり算だよ。`,
-        finalWhy: `${big} ÷ ${base} ＝ ${k}。${k}倍だね。もとにする量（${base}）で わるのが ポイント！`,
-      };
-    }
-    case 'wp-big': {
-      const divisor = rnd(12, 45);
-      const q = rnd(4, 9);
-      const r = rnd(0, divisor - 1);
-      const total = divisor * q + r;
-      const item = pick([
-        { name: '色紙', unit: 'まい', who: '人', emoji: '🎨' },
-        { name: 'えんぴつ', unit: '本', who: '人', emoji: '✏️' },
-        { name: 'シール', unit: 'まい', who: '人', emoji: '⭐' },
-      ]);
-      const c = buildDivChoices(total, divisor);
-      const hasRem = r > 0;
-      return {
-        text: `${item.name}が ${total}${item.unit} あります。${divisor}${item.who}で 同じ数ずつ 分けると、1人分は 何${item.unit}に なりますか？${hasRem ? 'あまりも 答えましょう。' : ''}`,
-        emoji: item.emoji, dividend: total, divisor, ...c,
-        quotient: q, remainder: r, finalKind: hasRem ? 'quot-rem' : 'quotient', finalAnswer: q, finalUnit: item.unit,
-        finalPrompt: hasRem ? '1人分と あまりは？' : `1人分は 何${item.unit}？`,
-        why: `大きな数でも 考え方は 同じ。ぜんぶの数 ÷ 人数 の わり算だよ。`,
-        finalWhy: `${total} ÷ ${divisor} = ${q}${hasRem ? ` あまり ${r}` : ''}。たしかめ算：${divisor} × ${q}${hasRem ? ` ＋ ${r}` : ''} ＝ ${total}。`,
-      };
-    }
-  }
-}
+export type FacePart = 'par' | 'perp' | 'all';
 
-/* =====================================================================
- * エラーハンター（誤り例）
- * =================================================================== */
-
-export const EH_REASONS = {
-  ZERO: '商に 0 を 書くのを わすれた',
-  REMBIG: 'あまりが わる数より 大きいのに 気づかなかった',
-  SUB: 'ひき算を まちがえた',
-  RULE10: '10のまとまりで 計算したのに、あまりを 10倍に もどさなかった',
-  PLACE: '商を 立てる 位を まちがえた',
-};
-
-export type EhPreset = 'eh-zero' | 'eh-zerotail' | 'eh-rembig' | 'eh-sub' | 'eh-rule10' | 'eh-place';
-
-export interface DivErrorExample {
-  character: string;
-  expr: string; // 「618 ÷ 6 = 13」のような誤りを含む式
-  isCorrect: boolean;
-  /** 筆算のわく表示用（誤った商の位置も再現できる） */
-  dividendN: number;
-  divisorN: number;
-  wrongQ: number;
-  wrongR: number;
-  /** 誤った商を書きはじめる列（省略時は右づめ） */
-  wrongOffset?: number;
-  correctQ: number;
-  correctR: number;
-  hasRem: boolean;
-  reasonOptions: string[];
-  correctReasonIndex: number;
-  fixHint: string;
-  explain: string;
-}
-
-const EH_CHARS = ['りく', 'はな', 'そら', 'みお', 'けん', 'あい'];
-
-function buildEhReasons(correct: string): { options: string[]; index: number } {
-  const all = Object.values(EH_REASONS);
-  const distractors = all.filter((r) => r !== correct).sort(() => Math.random() - 0.5).slice(0, 2);
-  const options = [correct, ...distractors].sort(() => Math.random() - 0.5);
-  return { options, index: options.indexOf(correct) };
-}
-
-const fmtDiv = (dd: number, dv: number, q: number, r: number) =>
-  `${dd} ÷ ${dv} = ${q}${r > 0 ? ` あまり ${r}` : ''}`;
-
-type EhBuilder = () => DivErrorExample;
-
-// 商の0の書きわすれ（618÷6=13 → 正 103）: 長除法で最頻出の系統的バグ
-const ehZero: EhBuilder = () => {
-  const divisor = rnd(2, 9);
-  const candidates = [102, 103, 104, 105, 106, 107, 108, 109, 120, 130, 140, 150, 160, 201, 203, 205, 210, 230, 302, 305, 310, 320, 405, 410]
-    .filter((x) => x * divisor <= 999);
-  if (candidates.length === 0) return ehZero();
-  const q = pick(candidates);
-  const dividend = divisor * q;
-  const wrongQ = Number(q.toString().replace('0', '')); // 0を1つ落とす
-  const r = buildEhReasons(EH_REASONS.ZERO);
-  return {
-    character: pick(EH_CHARS),
-    expr: fmtDiv(dividend, divisor, wrongQ, 0),
-    isCorrect: false,
-    dividendN: dividend, divisorN: divisor, wrongQ, wrongR: 0,
-    correctQ: q, correctR: 0, hasRem: false,
-    reasonOptions: r.options, correctReasonIndex: r.index,
-    fixHint: `たしかめ算を してみよう。${divisor} × ${wrongQ} は ${dividend} に なるかな？ わられる数が ${dividend.toString().length}けた なら、商の けた数も よく たしかめて。`,
-    explain: `わけられない 位には 商に「0」を 立てるよ。正しくは ${fmtDiv(dividend, divisor, q, 0)}。`,
-  };
-};
-
-// あまり ≧ わる数（74÷9=7あまり11 → 正 8あまり2）。ときどき2けたの わる数でも出す
-const ehRemBig: EhBuilder = () => {
-  const divisor = Math.random() < 0.5 ? rnd(4, 9) : rnd(12, 28);
-  const q = divisor >= 10 ? rnd(12, 33) : rnd(3, 9);
-  const rTrue = rnd(0, divisor - 2);
-  const dividend = divisor * q + rTrue;
-  const wrongQ = q - 1;
-  const wrongR = rTrue + divisor;
-  const r = buildEhReasons(EH_REASONS.REMBIG);
-  return {
-    character: pick(EH_CHARS),
-    expr: fmtDiv(dividend, divisor, wrongQ, wrongR),
-    isCorrect: false,
-    dividendN: dividend, divisorN: divisor, wrongQ, wrongR,
-    correctQ: q, correctR: rTrue, hasRem: rTrue > 0,
-    reasonOptions: r.options, correctReasonIndex: r.index,
-    fixHint: `あまりの ${wrongR} と わる数の ${divisor} を くらべてみよう。まだ ${divisor} を ひけるよね。商を 1 ふやして みよう。`,
-    explain: `あまりは いつも わる数より 小さくなるよ。正しくは ${fmtDiv(dividend, divisor, q, rTrue)}。`,
-  };
-};
-
-// ひき算ミス（あまりが±1ずれる）
-const ehSub: EhBuilder = () => {
-  const divisor = rnd(4, 9);
-  const q = rnd(12, 24);
-  const rTrue = rnd(1, divisor - 2);
-  const dividend = divisor * q + rTrue;
-  const wrongR = rTrue + pick([1, -1].filter((d) => rTrue + d >= 0 && rTrue + d < divisor)) ;
-  const r = buildEhReasons(EH_REASONS.SUB);
-  return {
-    character: pick(EH_CHARS),
-    expr: fmtDiv(dividend, divisor, q, wrongR),
-    isCorrect: false,
-    dividendN: dividend, divisorN: divisor, wrongQ: q, wrongR,
-    correctQ: q, correctR: rTrue, hasRem: rTrue > 0,
-    reasonOptions: r.options, correctReasonIndex: r.index,
-    fixHint: `たしかめ算を してみよう。${divisor} × ${q} ＋ ${wrongR} は ${dividend} に なるかな？`,
-    explain: `たしかめ算で ${divisor} × ${q} ＋ あまり ＝ ${dividend} に なるように、ひき算を 見直そう。正しくは ${fmtDiv(dividend, divisor, q, rTrue)}。`,
-  };
-};
-
-// わり算のきまりの あまり（140÷30=4あまり2 → 正 4あまり20）
-const ehRule10: EhBuilder = () => {
-  const d0 = rnd(3, 9);
-  const q = rnd(2, 9);
-  const r0 = rnd(1, d0 - 1);
-  const divisor = d0 * 10;
-  const dividend = divisor * q + r0 * 10;
-  const r = buildEhReasons(EH_REASONS.RULE10);
-  return {
-    character: pick(EH_CHARS),
-    expr: fmtDiv(dividend, divisor, q, r0),
-    isCorrect: false,
-    dividendN: dividend, divisorN: divisor, wrongQ: q, wrongR: r0,
-    correctQ: q, correctR: r0 * 10, hasRem: true,
-    reasonOptions: r.options, correctReasonIndex: r.index,
-    fixHint: `たしかめ算を してみよう。${divisor} × ${q} ＋ ${r0} は ${dividend} に なるかな？ あまりは「10のまとまり ${r0}こ分」だよ。`,
-    explain: `${dividend / 10} ÷ ${d0} で 計算したときの あまり ${r0} は 10が ${r0}こ という意味。正しくは ${fmtDiv(dividend, divisor, q, r0 * 10)}。`,
-  };
-};
-
-// 正しい例（まぜる）
-const ehCorrect: EhBuilder = () => {
-  const divisor = rnd(3, 9);
-  const q = rnd(8, 30);
-  const rTrue = rnd(0, divisor - 1);
-  const dividend = divisor * q + rTrue;
-  return {
-    character: pick(EH_CHARS),
-    expr: fmtDiv(dividend, divisor, q, rTrue),
-    isCorrect: true,
-    dividendN: dividend, divisorN: divisor, wrongQ: q, wrongR: rTrue,
-    correctQ: q, correctR: rTrue, hasRem: rTrue > 0,
-    reasonOptions: [], correctReasonIndex: -1,
-    fixHint: '',
-    explain: `たしかめ算：${divisor} × ${q}${rTrue > 0 ? ` ＋ ${rTrue}` : ''} ＝ ${dividend}。この計算は 正しかったね！`,
-  };
-};
-
-// 商の末尾の0の書きわすれ（652÷16=4あまり12 → 正 40あまり12）: テスト大問6の頻出型
-const ehZeroTail: EhBuilder = () => {
-  for (let i = 0; i < 300; i++) {
-    const divisor = rnd(12, 24);
-    const k = rnd(2, 9);
-    const r = rnd(1, divisor - 1);
-    const dividend = divisor * k * 10 + r;
-    if (dividend > 999) continue;
-    const rs = buildEhReasons(EH_REASONS.ZERO);
+/** 面と面の平行・垂直（紙のテスト 大問3 ①②） */
+export function genHeikoFace(part: FacePart = 'all'): Question {
+  const p = part === 'all' ? pick(['par', 'parName', 'perp'] as const) : part;
+  const dims = cuboidDims('distinct');
+  const view = pickView();
+  // 記号をつける面は、図の上で記号どうしが重ならない組にする（前とうしろの面は中心が近いので、両方には つけない）
+  const T: FaceId = p === 'parName' ? pick(FACES).id : pick(['top', 'bottom', 'left', 'right'] as FaceId[]);
+  const O = oppositeOf(T);
+  const J = pick(perpendicularFaces(T).filter((f) => f !== 'back'));
+  const labs = shuffle(['あ', 'い', 'う']);
+  const [lt, lo, lj] = labs as [string, string, string];
+  if (p === 'par') {
+    const opts = shuffle([lo, lj]);
     return {
-      character: pick(EH_CHARS),
-      expr: fmtDiv(dividend, divisor, k, r),
-      isCorrect: false,
-      dividendN: dividend, divisorN: divisor, wrongQ: k, wrongR: r,
-      correctQ: k * 10, correctR: r, hasRem: true,
-      reasonOptions: rs.options, correctReasonIndex: rs.index,
-      fixHint: `たしかめ算を してみよう。${divisor} × ${k} ＋ ${r} は ${dividend} に なるかな？ 一の位にも 商（0）を 立てるのを わすれていないかな。`,
-      explain: `一の位は ${r} ＜ ${divisor} で わけられないから、商に「0」を 立てるよ。正しくは ${fmtDiv(dividend, divisor, k * 10, r)}。`,
+      skillId: 'heiko-face', title: '面と面の 平行', emoji: '🧱',
+      text: '下の 直方体に ついて 答えましょう。',
+      figure: cuboidFig(dims, view, { letters: true, faceLabels: { [T]: lt, [O]: lo, [J]: lj } }),
+      steps: [choice({
+        label: '平行な面', prompt: `面${lt}に 平行な 面は、面${opts[0]}、面${opts[1]}の どちらですか。`, correct: `面${lo}`,
+        wrongs: [{ text: `面${lj}`, note: `面${lj}は 面${lt}と 直角に 交わるよ。平行な 面は、向かい合って 交わらない 面。` }],
+        why: '直方体で 向かい合う 面は 平行。どこまで 広げても 交わらないよ。',
+        hints: ['平行な 面は、交わらない 面。', `面${lt}と 向かい合って いる 面は どれ？`, `面${lt}と となり合う 面は 垂直に 交わるよ。`],
+      })],
+      summary: `面${lt}と 面${lo}は 向かい合う 面なので 平行。`,
+      label: `面${lt}に平行な面`, q: `面${lt}に平行な面`, a: `面${lo}`,
     };
   }
-  return ehZero();
-};
-
-// 商を立てる位置のまちがい（758÷21 の商36を 百の位から 書いてしまう）: いかそう算数型
-const ehPlace: EhBuilder = () => {
-  for (let i = 0; i < 300; i++) {
-    const divisor = rnd(21, 45);
-    const q = rnd(12, 39);
-    const r = rnd(0, divisor - 1);
-    const dividend = divisor * q + r;
-    if (dividend > 999 || dividend < 100) continue;
-    // 頭の1けたが わる数より小さい（＝百の位に商はたたない）形にする
-    if (Math.floor(dividend / 100) >= divisor) continue;
-    const rs = buildEhReasons(EH_REASONS.PLACE);
+  if (p === 'parName') {
+    const others = shuffle(perpendicularFaces(T)).slice(0, 3);
     return {
-      character: pick(EH_CHARS),
-      expr: `${dividend} ÷ ${divisor} の商 ${q} を 百の位から 書いた`,
-      isCorrect: false,
-      dividendN: dividend, divisorN: divisor, wrongQ: q, wrongR: r,
-      wrongOffset: 0, // 百の位から書いてしまっている
-      correctQ: q, correctR: r, hasRem: r > 0,
-      reasonOptions: rs.options, correctReasonIndex: rs.index,
-      fixHint: `${dividend} の 百の位「${Math.floor(dividend / 100)}」の中に ${divisor} は 入るかな？ 入らないときは、商は 十の位から たつよ。`,
-      explain: `${Math.floor(dividend / 100)} ＜ ${divisor} だから 商は 百の位には たたないよ。十の位から ${fmtDiv(dividend, divisor, q, r).split('= ')[1]} と 書くのが 正しいね。`,
+      skillId: 'heiko-face', title: '面と面の 平行', emoji: '🧱',
+      text: '下の 直方体に ついて 答えましょう。',
+      figure: cuboidFig(dims, view, { letters: true, shadeFace: T }),
+      steps: [choice({
+        label: '平行な面', prompt: `${faceName(T)}（色の ついた 面）に 平行な 面は どれですか。`, correct: faceName(O),
+        wrongs: others.map((x) => ({ text: faceName(x), note: `${faceName(x)}は ${faceName(T)}と 辺で つながって、直角に 交わるよ。` })),
+        why: `${faceName(T)}と 向かい合う ${faceName(O)}は 平行。`,
+        hints: ['平行な 面は 交わらない 面。', `${faceName(T)}と 頂点を 1つも 共有しない 面を さがそう。`, `${FACE_JP[T]}の 面と 向かい合うのは ${FACE_JP[O]}の 面。`],
+      })],
+      summary: `${faceName(T)}に 平行なのは ${faceName(O)}。`,
+      label: `${faceName(T)}に平行な面`, q: `${faceName(T)}に平行な面`, a: faceName(O),
     };
   }
-  return ehRemBig();
-};
-
-const EH_BUILDERS: EhBuilder[] = [ehZero, ehZeroTail, ehRemBig, ehSub, ehRule10, ehPlace];
-const EH_PRESETS: Record<EhPreset, EhBuilder> = {
-  'eh-zero': ehZero,
-  'eh-zerotail': ehZeroTail,
-  'eh-rembig': ehRemBig,
-  'eh-sub': ehSub,
-  'eh-rule10': ehRule10,
-  'eh-place': ehPlace,
-};
-
-/** ランダムに誤り例（ときどき正しい例）を生成。 */
-export function generateDivError(): DivErrorExample {
-  if (Math.random() < 0.25) return ehCorrect();
-  return pick(EH_BUILDERS)();
+  return {
+    skillId: 'heiko-face', title: '面と面の 垂直', emoji: '🧱',
+    text: '下の 直方体に ついて 答えましょう。',
+    figure: cuboidFig(dims, view, { letters: true, faceLabels: { [T]: lt, [O]: lo, [J]: lj } }),
+    steps: [num({
+      label: '垂直な面', prompt: `面${lt}に 垂直な 面は、全部で いくつ ありますか。`, answer: 4, unit: 'つ',
+      hints: ['面と 面が 直角に 交わって いたら 垂直。', `面${lt}と となり合う 面を 数えよう。見えない 面も。`, '6つの 面から、自分と 向かい合う 面を のぞくと…'],
+      diagnose: (v) => (v === 5 ? '向かい合う 面は 平行。垂直では ないよ。' : v === 2 || v === 3 ? '見えない 面も 数えよう。' : v === 1 ? 'それは 平行な 面の 数かな？' : null),
+    })],
+    summary: `面${lt}と となり合う 4つの 面が 垂直（向かい合う 面${lo}は 平行）。`,
+    label: `面${lt}に垂直な面`, q: `面${lt}に垂直な面の数`, a: '4つ',
+  };
 }
 
-/** 本番テスト用：誤りの種類を指定して生成。 */
-export function makeDivError(preset: EhPreset): DivErrorExample {
-  return EH_PRESETS[preset]();
+/** 辺と辺の平行（紙のテスト 大問3 ③） */
+export function genHeikoEdge(): Question {
+  const e = pick(EDGES);
+  const name = edgeName(e);
+  const par = parallelEdges(e).map(edgeName);
+  return {
+    skillId: 'heiko-edge', title: '辺と辺の 平行', emoji: '📏',
+    text: `下の 直方体で、辺${name}に 平行な 辺を 全部 えらびましょう。`,
+    figure: cuboidFig(cuboidDims('distinct'), pickView(), { letters: true, highlight: [name] }),
+    steps: [edgeMulti({
+      label: '平行な辺', prompt: `辺${name}に 平行な 辺（全部）`, correct: par, exclude: [name],
+      why: `辺${name}と 同じ 向きの 辺は 平行。直方体では、1本の 辺に 平行な 辺が 3本 あるよ。`,
+      hints: ['平行な 辺は、同じ 向きで 交わらない 辺。', `辺${name}と 同じ 向きの 辺を、見えない 辺も ふくめて さがそう。`, '同じ 面の 向かいの 辺だけで なく、はなれた ところにも あるよ（全部で 3本）。'],
+      diagnose: (p) => (p.some((x) => perpendicularEdges(e).map(edgeName).includes(x)) ? `辺${name}と 交わる 辺が まじって いるよ。交わる 辺は 平行では ないよ。` : null),
+    })],
+    summary: `辺${name}に 平行な 辺は ${par.map((x) => `辺${x}`).join('・')}。`,
+    label: `辺${name}に平行な辺`, q: `辺${name}に平行な辺を全部`, a: par.map((x) => `辺${x}`).join('、'),
+  };
 }
+
+/** 辺と辺の垂直 */
+export function genHeikoEdgePerp(): Question {
+  const e = pick(EDGES);
+  const name = edgeName(e);
+  const per = perpendicularEdges(e).map(edgeName);
+  const par = parallelEdges(e).map(edgeName);
+  return {
+    skillId: 'heiko-edgeperp', title: '辺と辺の 垂直', emoji: '📐',
+    text: `下の 直方体で、辺${name}に 垂直な 辺を 全部 えらびましょう。`,
+    figure: cuboidFig(cuboidDims('distinct'), pickView(), { letters: true, highlight: [name] }),
+    steps: [edgeMulti({
+      label: '垂直な辺', prompt: `辺${name}に 垂直な 辺（全部）`, correct: per, exclude: [name],
+      why: `辺${name}と 直角に 交わる 辺が 垂直。両はしの 頂点${e[0]}・${e[1]}から 2本ずつで 4本。`,
+      hints: ['垂直な 辺は、直角に 交わる 辺。', `頂点${e[0]}に 集まる 辺と、頂点${e[1]}に 集まる 辺を 見よう。`, `頂点${e[0]}から 2本、頂点${e[1]}から 2本。`],
+      diagnose: (p) => {
+        if (p.some((x) => par.includes(x))) return '平行な 辺が まじって いるよ。垂直な 辺は 交わる 辺だよ。';
+        if (p.some((x) => !per.includes(x))) return `辺${name}と 交わらない 辺は、垂直とは いわないよ。辺${name}と 直角に 交わる 辺を さがそう。`;
+        return null;
+      },
+    })],
+    summary: `辺${name}に 垂直な 辺は ${per.map((x) => `辺${x}`).join('・')}。`,
+    label: `辺${name}に垂直な辺`, q: `辺${name}に垂直な辺を全部`, a: per.map((x) => `辺${x}`).join('、'),
+  };
+}
+
+/** 面と辺の平行・垂直（紙のテスト 大問3 ④） */
+export function genHeikoFaceEdge(part: FacePart = 'all'): Question {
+  const p = part === 'all' ? (Math.random() < 0.6 ? 'perp' : 'par') : part;
+  const T = pick(FACES).id;
+  const useLabel = Math.random() < 0.5;
+  const fname = useLabel ? '面あ' : faceName(T);
+  const ans = (p === 'perp' ? edgesPerpToFace(T) : edgesParallelToFace(T)).map(edgeName);
+  const on = edgesOnFace(T).map(edgeName);
+  const word = p === 'perp' ? '垂直' : '平行';
+  return {
+    skillId: 'heiko-faceedge', title: `面と辺の ${word}`, emoji: '📐',
+    text: `下の 直方体で、${fname}に ${word}な 辺を 全部 えらびましょう。`,
+    figure: cuboidFig(cuboidDims('distinct'), pickView(), { letters: true, ...(useLabel ? { faceLabels: { [T]: 'あ' } } : {}), shadeFace: T }),
+    steps: [edgeMulti({
+      label: `${word}な辺`, prompt: `${fname}に ${word}な 辺（全部）`, correct: ans,
+      why: p === 'perp' ? `${fname}に 直角に 交わる 辺（面から まっすぐ 出て いる 辺）が 垂直。4本 あるよ。` : `${fname}と 向かい合う 面の まわりの 4本の 辺は、${fname}と 交わらないので 平行。`,
+      hints: p === 'perp'
+        ? [`${fname}から まっすぐ 出て いる 辺を さがそう。`, `${fname}の 4つの 頂点から 1本ずつ 出て いるよ。`, `${fname}の 上に ある 辺は 数えないよ。`]
+        : [`${fname}と 交わらない 辺を さがそう。`, `${fname}と 向かい合う 面の 辺を 見よう。`, `${fname}の 上に ある 辺は 数えないよ。`],
+      diagnose: (pk) => (pk.some((x) => on.includes(x)) ? `${fname}の 上に ある 辺が まじって いるよ。面の 上の 辺は、垂直でも 平行でも ないよ。` : null),
+    })],
+    summary: `${fname}に ${word}な 辺は ${ans.map((x) => `辺${x}`).join('・')}。`,
+    label: `${fname}に${word}な辺`, q: `${fname}に${word}な辺を全部`, a: ans.map((x) => `辺${x}`).join('、'),
+  };
+}
+
+/* ================================================================== */
+/* ③ 展開図                                                              */
+/* ================================================================== */
+
+const netRects = (net: Net): Rect[] => net.faces.map((f) => f.rect);
+
+export function genTenkaiCubeOk(): Question {
+  const want = Math.random() < 0.5;
+  let cells = randomHexomino();
+  for (let t = 0; t < 400 && isCubeNet(cells) !== want; t++) cells = randomHexomino();
+  const ok = isCubeNet(cells);
+  return {
+    skillId: 'tenkai-cubeok', title: '立方体の 展開図に なる？', emoji: '✂️',
+    text: '下の 図を 組み立てると、立方体に なりますか。',
+    figure: { type: 'net', rects: cells.map((c) => ({ x: c.x, y: c.y, w: 1, h: 1 })), grid: true },
+    steps: [choice({
+      label: 'なる？', prompt: '立方体に なりますか。', correct: ok ? 'なる' : 'ならない',
+      wrongs: [{ text: ok ? 'ならない' : 'なる', note: ok ? '1つの 面を 底に して、まわりの 面を 順に 折り上げて みよう。重なる 面は ある？' : '頭の 中で 組み立てると、重なる 面が できて、どこかの 面が たりなく なるよ。' }],
+      why: ok ? '6つの 面が 重ならずに、上・下・前・うしろ・右・左に 1つずつ くるので、立方体に なる。' : '組み立てると 2つの 面が 同じ ところに 重なり、ふたの ない ところが できる。6つの 正方形が つながって いても、展開図に なるとは かぎらない。',
+      hints: ['どれか 1つの 面を 底に しよう。', '底の 面の となりの 面を 折り上げて、横の 面に しよう。', '横に 4つより 多く ならぶと 重なるよ。向かい合う 面が 1つずつ あるか たしかめよう。'],
+    })],
+    summary: ok ? '立方体の 展開図。向かい合う 面が 3組 そろう。' : '組み立てると 面が 重なるので、立方体の 展開図では ない。',
+    label: '展開図に なる？', q: '組み立てると立方体になるか', a: ok ? 'なる' : 'ならない',
+  };
+}
+
+/** 展開図の木から、葉の面を k まい はずす（のこりは つながったまま） */
+function removeLeaves(net: Net, k: number): number[] {
+  const alive = net.faces.map((_, i) => i);
+  for (let r = 0; r < k; r++) {
+    const leaves = alive.filter((i) => i !== 0 && !alive.some((j) => net.parent[j] === i));
+    const pickLeaf = pick(leaves.length ? leaves : alive.filter((i) => i !== 0));
+    alive.splice(alive.indexOf(pickLeaf), 1);
+  }
+  return alive;
+}
+
+function paintQuestion(o: { skillId: string; dims: Dims; missing: number; maxW: number; maxH: number; margin: number; isCube: boolean }): Question {
+  for (let t = 0; t < 300; t++) {
+    const raw = randomNet(o.dims);
+    const b = netBounds(netRects(raw));
+    const gw = b.w + o.margin * 2, gh = b.h + o.margin * 2;
+    if (gw > o.maxW || gh > o.maxH) continue;
+    const net = normalizeNet(raw, o.margin, o.margin);
+    const keep = removeLeaves(net, o.missing);
+    const given = keep.map((i) => net.faces[i] as FaceState);
+    const answers = completions(o.dims, given, gw, gh);
+    const lack = net.faces.filter((_, i) => !keep.includes(i)).map((f) => `横${f.rect.w}cm×たて${f.rect.h}cm`);
+    const [L, W, H] = o.dims;
+    const what = o.isCube ? `1辺 ${L}cm の 立方体` : `横 ${L}cm、たて ${W}cm、高さ ${H}cm の 直方体`;
+    return {
+      skillId: o.skillId, title: o.isCube ? '立方体の 展開図を かく' : '直方体の 展開図を かく', emoji: '✏️',
+      text: `下の ${what}の 展開図の 続きを かきましょう。`,
+      figure: cuboidFig(o.dims, pickView(), { dimLabels: true }),
+      steps: [{
+        kind: 'paint', label: '展開図', prompt: `方眼の マスを ぬって、たりない 面（あと ${o.missing}面）を かこう。`,
+        dims: o.dims, gw, gh, given: given.map((f) => f.rect), answers, missing: o.missing, unitLabel: '1cm',
+        hints: [
+          '向かい合う 面は 同じ 形・同じ 大きさ。どの 面が まだ ないか 考えよう。',
+          'となりの 面と くっつく 辺は、同じ 長さに なるよ。組み立てたとき 重ならない ところに 足そう。',
+          `たりない 面は ${lack.join('、')}。`,
+        ],
+      }],
+      summary: o.isCube ? '立方体の 展開図は 正方形 6つ。組み立てて 重ならない ように 面を 足す。' : '直方体の 展開図は、同じ 形の 長方形が 2まいずつ 3組。くっつく 辺の 長さを そろえる。',
+      label: o.isCube ? `立方体${L}cmの展開図` : `直方体${L}×${W}×${H}の展開図`,
+      q: `${what}の展開図の続き`, a: '（作図）',
+    };
+  }
+  throw new Error('paintQuestion: 作れません');
+}
+
+export function genTenkaiCube(missing?: number): Question {
+  return paintQuestion({ skillId: 'tenkai-cube', dims: [2, 2, 2], missing: missing ?? pick([2, 2, 3]), maxW: 13, maxH: 11, margin: 2, isCube: true });
+}
+
+const CUBOID_NET_DIMS: Dims[] = [[3, 2, 1], [4, 2, 1], [3, 1, 2], [2, 3, 1], [4, 1, 2], [3, 2, 2], [4, 3, 1], [2, 1, 3], [3, 1, 1], [4, 2, 2]];
+
+export function genTenkaiCuboid(missing?: number): Question {
+  return paintQuestion({ skillId: 'tenkai-cuboid', dims: pick(CUBOID_NET_DIMS), missing: missing ?? 2, maxW: 13, maxH: 12, margin: 2, isCube: false });
+}
+
+/** 立方体の展開図に、まわりの点の記号と面の記号をつける（紙のテスト 大問8 の形） */
+function labeledCubeNet() {
+  const net = randomNet([1, 1, 1]);
+  const bp = boundaryPoints(net);
+  const points: LabeledPt[] = bp.points.map((p, i) => ({ x: p.x, y: p.y, label: KATA[i] as string }));
+  const faceLabels = shuffle(HIRA);
+  return { net, bp, points, faceLabels };
+}
+
+export function genTenkaiPoint(): Question {
+  const { net, bp, points, faceLabels } = labeledCubeNet();
+  const partners = (i: number) => bp.points.map((p, j) => (j !== i && p.corner === bp.points[i]!.corner ? j : -1)).filter((j) => j >= 0);
+  const cands = bp.points.map((_, i) => i).filter((i) => partners(i).length === 1);
+  const i = pick(cands);
+  const j = partners(i)[0] as number;
+  const n = bp.points.length;
+  const neighbors = [(i + 1) % n, (i + n - 1) % n].filter((k) => k !== j);
+  const others = shuffle(bp.points.map((_, k) => k).filter((k) => k !== i && k !== j && !neighbors.includes(k)));
+  const wrongIdx = [...neighbors, ...others].slice(0, 3);
+  const P = (k: number) => `点${points[k]!.label}`;
+  return {
+    skillId: 'tenkai-point', title: '重なる 点', emoji: '🔺',
+    text: `下の 立方体の 展開図を 組み立てます。\n${P(i)}と 重なる 点は どれですか。`,
+    figure: { type: 'net', rects: netRects(net), points, faceLabels, highlightPoint: i },
+    steps: [choice({
+      label: '重なる点', prompt: `${P(i)}と 重なる 点`, correct: P(j),
+      wrongs: wrongIdx.map((k) => ({ text: P(k), note: neighbors.includes(k) ? `${P(k)}は ${P(i)}と 同じ 辺の はしの 点。組み立てても はなれて いるよ。` : `頭の 中で 組み立てて、${P(i)}の ところに 集まる 点を さがそう。` })),
+      why: `組み立てると、${P(i)}と ${P(j)}は 立方体の 同じ 頂点に 集まるよ。`,
+      hints: [`${P(i)}を ふくむ 面を 底に して、となりの 面を 折り上げて みよう。`, '折ったとき くっつく 辺の はしの 点どうしが 重なる。', `${P(i)}が はしに ある 辺と くっつく 辺を さがそう。`],
+    })],
+    summary: `${P(i)}と ${P(j)}が 重なる。`,
+    label: `${P(i)}と重なる点`, q: `${P(i)}と重なる点`, a: P(j),
+  };
+}
+
+export function genTenkaiEdge(): Question {
+  const { net, bp, points, faceLabels } = labeledCubeNet();
+  const n = bp.edges.length;
+  const k = Math.floor(Math.random() * n);
+  const e = bp.edges[k]!;
+  const m = bp.edges.findIndex((x, t) => t !== k && x.edge === e.edge);
+  const f = bp.edges[m]!;
+  // 重なる辺の名前は、対応する点の順にする（エ↔ク、オ↔キ なら「辺クキ」）
+  const fa = bp.points[f.a]!, fb = bp.points[f.b]!;
+  const ea = bp.points[e.a]!;
+  const partnerName = fa.corner === ea.corner ? `${points[f.a]!.label}${points[f.b]!.label}` : `${points[f.b]!.label}${points[f.a]!.label}`;
+  void fb;
+  const nm = (t: number) => `${points[bp.edges[t]!.a]!.label}${points[bp.edges[t]!.b]!.label}`;
+  const adj = [(k + 1) % n, (k + n - 1) % n].filter((t) => t !== m);
+  const others = shuffle(bp.edges.map((_, t) => t).filter((t) => t !== k && t !== m && !adj.includes(t)));
+  const wrongIdx = [...adj, ...others].slice(0, 3);
+  const en = nm(k);
+  return {
+    skillId: 'tenkai-edge', title: '重なる 辺', emoji: '🔗',
+    text: `下の 立方体の 展開図を 組み立てます。\n辺${en}と 重なる 辺は どれですか。`,
+    figure: { type: 'net', rects: netRects(net), points, faceLabels, highlightEdge: [e.a, e.b] },
+    steps: [choice({
+      label: '重なる辺', prompt: `辺${en}と 重なる 辺`, correct: `辺${partnerName}`,
+      wrongs: wrongIdx.map((t) => ({ text: `辺${nm(t)}`, note: adj.includes(t) ? `辺${nm(t)}は 辺${en}と となりあって いる 辺。組み立てると 直角に なるよ。` : '頭の 中で 組み立てよう。まず、辺の はしの 点と 重なる 点を さがそう。' })),
+      why: `組み立てると 辺${en}と 辺${partnerName}は くっついて、立方体の 同じ 辺に なるよ。`,
+      hints: [`辺${en}の 両はしの 点と、それぞれ 重なる 点を さがそう。`, '重なる 点どうしを むすんだ 辺が、重なる 辺。', '辺の 先の 面を 折り上げると、どの 辺と くっつく？'],
+    })],
+    summary: `辺${en}と 辺${partnerName}が 重なる。`,
+    label: `辺${en}と重なる辺`, q: `辺${en}と重なる辺`, a: `辺${partnerName}`,
+  };
+}
+
+export function genTenkaiFace(part: FacePart = 'all'): Question {
+  const p = part === 'all' ? (Math.random() < 0.6 ? 'par' : 'perp') : part;
+  const net = randomNet([1, 1, 1]);
+  const faceLabels = shuffle(HIRA);
+  const i = rnd(0, 5);
+  const o = oppositeFace(net, i);
+  const L = (k: number) => `面${faceLabels[k]}`;
+  if (p === 'par') {
+    return {
+      skillId: 'tenkai-face', title: '展開図で 平行な 面', emoji: '🎲',
+      text: `下の 立方体の 展開図を 組み立てます。\n${L(i)}に 平行な 面は どれですか。`,
+      figure: { type: 'net', rects: netRects(net), faceLabels, shade: [i] },
+      steps: [choice({
+        label: '平行な面', prompt: `${L(i)}に 平行な 面`, correct: L(o),
+        wrongs: shuffle([0, 1, 2, 3, 4, 5].filter((k) => k !== i && k !== o)).slice(0, 3).map((k) => ({ text: L(k), note: `${L(k)}は 組み立てると ${L(i)}の となりに なり、垂直に 交わるよ。` })),
+        why: `組み立てると ${L(i)}と ${L(o)}が 向かい合う。向かい合う 面は 平行。`,
+        hints: ['平行な 面は、組み立てたとき 向かい合う 面。', `${L(i)}と となり合って いる 面は 平行に ならない。`, 'まっすぐ 3つ ならんだ 面の 両はしは 向かい合うよ。'],
+      })],
+      summary: `${L(i)}と ${L(o)}が 向かい合って 平行。`,
+      label: `${L(i)}に平行な面`, q: `${L(i)}に平行な面`, a: L(o),
+    };
+  }
+  const options = [0, 1, 2, 3, 4, 5].filter((k) => k !== i).map((k) => L(k));
+  const correct = options.map((t, idx) => (t === L(o) ? -1 : idx)).filter((x) => x >= 0);
+  return {
+    skillId: 'tenkai-face', title: '展開図で 垂直な 面', emoji: '🎲',
+    text: `下の 立方体の 展開図を 組み立てます。\n${L(i)}に 垂直な 面を 全部 えらびましょう。`,
+    figure: { type: 'net', rects: netRects(net), faceLabels, shade: [i] },
+    steps: [{
+      kind: 'multi', label: '垂直な面', prompt: `${L(i)}に 垂直な 面（全部）`, options, correct,
+      why: `${L(i)}と 向かい合う ${L(o)}だけが 平行。のこりの 4つは 垂直。`,
+      hints: ['垂直な 面は、組み立てたとき となりに くる 面。', `まず ${L(i)}と 向かい合う 面を 見つけよう。`, '向かい合う 面 いがいの 4つ。'],
+      diagnose: (pk) => (pk.includes(options.indexOf(L(o))) ? `${L(o)}は 組み立てると ${L(i)}と 向かい合うよ。向かい合う 面は 平行。` : null),
+    }],
+    summary: `${L(o)}いがいの 4つの 面が 垂直。`,
+    label: `${L(i)}に垂直な面`, q: `${L(i)}に垂直な面を全部`, a: correct.map((x) => options[x]).join('、'),
+  };
+}
+
+/* ================================================================== */
+/* ④ 見取図                                                              */
+/* ================================================================== */
+
+export function genMitoriHidden(): Question {
+  const dims = cuboidDims('any');
+  const view = pickView();
+  const ans = hiddenEdges(view).map(edgeName);
+  return {
+    skillId: 'mitori-hidden', title: '見えない 辺は 点線', emoji: '👀',
+    text: `下の 直方体の 見取図は、辺を ぜんぶ 実線で かいて あります。\n見えない 辺を タップして 点線に しましょう。`,
+    steps: [{
+      kind: 'dash', label: '見えない辺', prompt: '見えない 辺（全部）を 点線に しよう。', dims, view, answer: ans,
+      hints: ['手前の 面に かくれて 見えない 辺が ある。', 'おくの 下の 角に 集まる 辺を 見よう。', '見えない 辺は 3本。'],
+    }],
+    summary: '見取図では、見えない 辺を 点線で かく。おくの 下の 頂点に 集まる 3本。',
+    label: '見えない辺を点線に', q: '見取図の見えない辺', a: ans.map((x) => `辺${x}`).join('、'),
+  };
+}
+
+/** 方眼にかく見取図の形（格子点の上の8つの頂点） */
+function latticeCuboid() {
+  // おくへの ずれ（ox, oy）は前の面より小さくする。同じか大きいと、見えない辺が前の面の辺と重なってしまう
+  let w = 0, h = 0, ox = 0, oy = 0;
+  do {
+    w = rnd(3, 6); h = rnd(2, 4);
+    [ox, oy] = pick([[2, 1], [3, 1], [2, 2], [3, 2], [4, 2], [1, 1], [4, 1]] as [number, number][]);
+  } while (ox >= w || oy >= h);
+  const view = pickView();
+  const sg = view === 'right' ? 1 : -1;
+  const x0 = 1 + (view === 'left' ? ox : 0), y0 = 1 + oy + h;
+  const P: Record<VName, Pt> = {
+    E: { x: x0, y: y0 }, F: { x: x0 + w, y: y0 }, A: { x: x0, y: y0 - h }, B: { x: x0 + w, y: y0 - h },
+    H: { x: x0 + sg * ox, y: y0 - oy }, G: { x: x0 + w + sg * ox, y: y0 - oy }, D: { x: x0 + sg * ox, y: y0 - h - oy }, C: { x: x0 + w + sg * ox, y: y0 - h - oy },
+  };
+  return { P, view, gw: w + ox + 2, gh: h + oy + 2, w, h };
+}
+
+export function genMitoriDraw(given?: 'test' | 'easy' | 'hard'): Question {
+  const lvl = given ?? pick(['easy', 'test', 'hard'] as const);
+  const { P, view, gw, gh, w, h } = latticeCuboid();
+  const hid = hiddenEdges(view).map(edgeName);
+  const front = ['AB', 'EF', 'AE', 'BF'];
+  const visible = EDGES.map(edgeName).filter((n) => !hid.includes(n) && !front.includes(n));
+  // easy: 見えない辺だけかく / test: 見える辺を1本と見えない辺 / hard: 前の面だけ与える
+  const drop = lvl === 'easy' ? 0 : lvl === 'test' ? 1 : visible.length;
+  const dropped = shuffle(visible).slice(0, drop);
+  const seg = (n: string, dashed = false): Seg => ({ a: P[n[0] as VName], b: P[n[1] as VName], dashed });
+  const givenSegs = [...front, ...visible.filter((n) => !dropped.includes(n))].map((n) => seg(n));
+  const expected = [...dropped.map((n) => seg(n)), ...hid.map((n) => seg(n, true))];
+  return {
+    skillId: 'mitori-draw', title: '見取図の 続きを かく', emoji: '🖊️',
+    text: `下の 直方体の 見取図の 続きを かきましょう。${drop > 0 ? '\n（見える 辺は 実線、見えない 辺は 点線で かく）' : '\n（見えない 辺を 点線で かく）'}`,
+    steps: [{
+      kind: 'sketch', label: '見取図', prompt: `点を 2つ タップして 辺を かこう。あと ${expected.length}本。`, gw, gh,
+      given: givenSegs, expected, useDashed: true,
+      hints: [
+        '平行な 辺は、方眼の 上で 同じ 向き・同じ 長さに かく。',
+        '見えない 辺は、おくの 下の 角に 集まる 3本。点線に きりかえて かこう。',
+        `おくの 辺は、前の 辺を ななめに ずらした ところ。前の 面は 横 ${w}マス・たて ${h}マス。`,
+      ],
+    }],
+    summary: '見取図は、平行な 辺を 平行に、見えない 辺を 点線で かく。',
+    label: '見取図の続き', q: '直方体の見取図の続き', a: '（作図）',
+  };
+}
+
+export function genMitoriCount(): Question {
+  const dims = cuboidDims('any');
+  const view = pickView();
+  const asks = shuffle([
+    { label: '見える面', prompt: '見取図で、見えて いる 面は いくつ ありますか。', answer: 3, unit: 'つ', note: '前・上・横の 3つ。' },
+    { label: '見えない辺', prompt: '見えない 辺（点線の 辺）は 何本 ありますか。', answer: 3, unit: '本', note: 'おくの 下の 角に 集まる 辺。' },
+    { label: '見えない頂点', prompt: '見えない 頂点は いくつ ありますか。', answer: 1, unit: 'つ', note: '点線が 集まる 角。' },
+    { label: '見える辺', prompt: '見えて いる 辺（実線の 辺）は 何本 ありますか。', answer: 9, unit: '本', note: '12本から 見えない 3本を ひく。' },
+  ]).slice(0, 2);
+  return {
+    skillId: 'mitori-count', title: '見取図を 読む', emoji: '🔍',
+    text: '下の 直方体の 見取図を 見て 答えましょう。',
+    figure: cuboidFig(dims, view, { letters: true }),
+    steps: asks.map((a) => num({
+      label: a.label, prompt: a.prompt, answer: a.answer, unit: a.unit,
+      hints: ['実線は 見える 辺、点線は 見えない 辺。', a.note, '図の 線を 1本ずつ 指で おさえて 数えよう。'],
+      diagnose: (v) => (v === 12 ? 'それは 辺 ぜんぶの 数。見える・見えないで 分けよう。' : v === 6 ? 'それは 面 ぜんぶの 数。' : null),
+    })),
+    summary: '見える 面 3つ・見える 辺 9本・見えない 辺 3本・見えない 頂点 1つ。',
+    label: '見取図を読む', q: asks.map((a) => a.label).join('・'), a: asks.map((a) => `${a.answer}${a.unit}`).join('・'),
+  };
+}
+
+/* ================================================================== */
+/* ⑤ 位置の表し方                                                        */
+/* ================================================================== */
+
+function planePoints(n: number) {
+  const w = rnd(5, 7), h = rnd(4, 6);
+  const used = new Set<string>(['0,0']);
+  const pts: LabeledPt[] = [];
+  const names = ['B', 'C', 'D', 'E'];
+  while (pts.length < n) {
+    const x = rnd(0, w), y = rnd(0, h);
+    if (used.has(`${x},${y}`) || (x === 0 && y === 0) || x === y) continue;
+    if (pts.length === 0 && (x === 0 || y === 0)) continue;
+    used.add(`${x},${y}`);
+    pts.push({ x, y, label: names[pts.length] as string });
+  }
+  return { w, h, pts, used };
+}
+
+const swapNote = '横（右へ）を 先に、たて（上へ）を あとに 数えるよ。横と たてが 入れかわって いないかな？';
+
+export function genIchiRead(): Question {
+  const { w, h, pts } = planePoints(3);
+  const ex = pts[0]!, t = pick(pts.slice(1));
+  return {
+    skillId: 'ichi-read', title: '点の 位置を 表す', emoji: '📍',
+    text: `下の 図で、点${ex.label}の 位置は、点Aを もとに して（横 ${ex.x}cm、たて ${ex.y}cm）と 表す ことが できます。\n点Aを もとに して、点${t.label}の 位置を 表しましょう。`,
+    figure: { type: 'plane', w, h, points: [{ x: 0, y: 0, label: 'A' }, ...pts] },
+    steps: [
+      num({ label: '横', prompt: `点${t.label}は、点Aから 横（右）へ 何cm？`, answer: t.x, before: '横', unit: 'cm',
+        hints: ['点Aから 右へ 何マス 進むか 数えよう。', `点${t.label}の 真下の 目もりを 読もう。`, '1マスは 1cm。'],
+        diagnose: (v) => (v === t.y ? swapNote : null) }),
+      num({ label: 'たて', prompt: `点${t.label}は、点Aから たて（上）へ 何cm？`, answer: t.y, before: 'たて', unit: 'cm',
+        hints: ['点Aから 上へ 何マス 進むか 数えよう。', `点${t.label}の 真横の 目もりを 読もう。`, '1マスは 1cm。'],
+        diagnose: (v) => (v === t.x ? swapNote : null) }),
+    ],
+    summary: `点${t.label}は（横 ${t.x}cm、たて ${t.y}cm）。横を 先に 書く。`,
+    label: `点${t.label}の位置`, q: `点Aをもとにした点${t.label}の位置`, a: `横${t.x}cm、たて${t.y}cm`,
+  };
+}
+
+export function genIchiPlot(): Question {
+  const { w, h, pts, used } = planePoints(2);
+  let ax = 0, ay = 0;
+  for (let k = 0; k < 200; k++) {
+    ax = rnd(1, w); ay = rnd(1, h);
+    if (ax !== ay && !used.has(`${ax},${ay}`) && !used.has(`${ay},${ax}`) && ay <= w && ax <= h) break;
+  }
+  if (ax === ay || used.has(`${ax},${ay}`)) { ax = Math.min(w, 2); ay = 1; }
+  const ex = pts[0]!;
+  return {
+    skillId: 'ichi-plot', title: '点を かく', emoji: '📍',
+    text: `点${ex.label}の 位置は、点Aを もとに して（横 ${ex.x}cm、たて ${ex.y}cm）と 表せます。\n点D（横 ${ax}cm、たて ${ay}cm）を、図の 中に かきましょう。`,
+    steps: [{
+      kind: 'point', label: '点D', prompt: `点D（横 ${ax}cm、たて ${ay}cm）`, w, h,
+      points: [{ x: 0, y: 0, label: 'A' }, ...pts], answer: { x: ax, y: ay }, answerLabel: 'D',
+      hints: ['点Aから はじめよう。', `まず 右へ ${ax}マス。`, `そこから 上へ ${ay}マス。`],
+      diagnose: (p) => (p.x === ax && p.y === ay ? null : p.x === ay && p.y === ax ? swapNote : p.x === ax ? `横は あって いるよ。たて（上へ）${ay}cm を たしかめよう。` : p.y === ay ? `たては あって いるよ。横（右へ）${ax}cm を たしかめよう。` : null),
+    }],
+    summary: `点Aから 右へ ${ax}、上へ ${ay} の ところが 点D。`,
+    label: `点D（${ax},${ay}）をかく`, q: `点D（横${ax}cm、たて${ay}cm）をかく`, a: `横${ax}・たて${ay}の点`,
+  };
+}
+
+export function genIchiSpace(): Question {
+  const dims = cuboidDims('distinct');
+  const [L, W, H] = dims;
+  const view: 'right' = 'right';
+  const target = pick(VERTS.filter((v) => v !== 'E' && v !== 'F'));
+  const [x, y, z] = vertexAt(target, dims);
+  const inv = Math.random() < 0.3;
+  const base = `頂点Eを もとに すると、頂点Fの 位置は（横 ${L}cm、たて 0cm、高さ 0cm）と 表せます。`;
+  const fig = cuboidFig(dims, view, { letters: true, dimLabels: true, markVertex: 'E' });
+  if (inv) {
+    const others = shuffle(VERTS.filter((v) => v !== target && v !== 'E')).slice(0, 3);
+    return {
+      skillId: 'ichi-space', title: '空間の 位置', emoji: '🧭',
+      text: `下の 直方体で、${base}\n（横 ${x}cm、たて ${y}cm、高さ ${z}cm）の 位置に ある 頂点は どれですか。`,
+      figure: fig,
+      steps: [choice({
+        label: '頂点', prompt: `（横 ${x}cm、たて ${y}cm、高さ ${z}cm）の 頂点`, correct: `頂点${target}`,
+        wrongs: others.map((o) => { const p = vertexAt(o, dims); return { text: `頂点${o}`, note: `頂点${o}は（横 ${p[0]}cm、たて ${p[1]}cm、高さ ${p[2]}cm）だよ。` }; }),
+        why: `頂点Eから 横へ ${x}cm、たて（おく）へ ${y}cm、高さ ${z}cm 進んだ ところが 頂点${target}。`,
+        hints: ['頂点Eから、横 → たて（おく） → 高さ の 順に 進もう。', `横に ${x}cm、おくに ${y}cm。`, `そこから 上に ${z}cm。`],
+      })],
+      summary: `（横 ${x}、たて ${y}、高さ ${z}）は 頂点${target}。`,
+      label: `空間の位置→頂点${target}`, q: `（横${x}、たて${y}、高さ${z}）の頂点`, a: `頂点${target}`,
+    };
+  }
+  const note = (v: number, want: number, axis: string) => (v !== want && [x, y, z].includes(v) ? `${axis}の 長さを、図の 長さから もう一度 たしかめよう。横・たて・高さの 順だよ。` : null);
+  return {
+    skillId: 'ichi-space', title: '空間の 位置', emoji: '🧭',
+    text: `下の 直方体で、${base}\n頂点${target}の 位置を 表しましょう。`,
+    figure: { ...fig, markVertex: target } as Figure,
+    steps: [
+      num({ label: '横', prompt: `頂点${target}は 横 何cm？`, answer: x, before: '横', unit: 'cm', hints: ['頂点Eから 横（右）へ 進む 長さ。', '横の 辺の 長さを 見よう。', `横の 辺は ${L}cm。進まなければ 0cm。`], diagnose: (v) => note(v, x, '横') }),
+      num({ label: 'たて', prompt: `頂点${target}は たて 何cm？`, answer: y, before: 'たて', unit: 'cm', hints: ['頂点Eから おくへ 進む 長さ。', 'ななめに かいた 辺が おくゆき（たて）。', `たての 辺は ${W}cm。進まなければ 0cm。`], diagnose: (v) => note(v, y, 'たて') }),
+      num({ label: '高さ', prompt: `頂点${target}は 高さ 何cm？`, answer: z, before: '高さ', unit: 'cm', hints: ['頂点Eから 上へ 進む 長さ。', '下の 面の 頂点なら 高さは 0cm。', `高さの 辺は ${H}cm。`], diagnose: (v) => note(v, z, '高さ') }),
+    ],
+    summary: `頂点${target}は（横 ${x}cm、たて ${y}cm、高さ ${z}cm）。`,
+    label: `頂点${target}の位置`, q: `頂点Eをもとにした頂点${target}の位置`, a: `横${x}cm、たて${y}cm、高さ${z}cm`,
+  };
+}
+
+/* ================================================================== */
+/* ⑥ いかそう（リボン）                                                   */
+/* ================================================================== */
+
+export function genKatsuyoRibbon(): Question {
+  const L = pick([30, 40, 50, 60]), W = pick([20, 30, 40].filter((x) => x < L)), H = pick([5, 10, 15, 20].filter((x) => x < W));
+  const bow = pick([20, 25, 30, 40]);
+  const total = L * 2 + W * 2 + H * 4 + bow;
+  return {
+    skillId: 'katsuyo-ribbon', title: 'リボンの 長さ', emoji: '🎁',
+    text: `横 ${L}cm、たて ${W}cm、高さ ${H}cm の 箱に、図のように リボンを かけます。\n結び目に リボンを ${bow}cm 使うと、リボンは 全部で 何cm あれば よいですか。`,
+    figure: cuboidFig([L, W, H], 'right', { ribbon: true, dimLabels: true }),
+    steps: [
+      num({
+        label: '高さの回数', prompt: `高さ（${H}cm）の ところを、リボンは 何回 通りますか。`, answer: 4, unit: '回',
+        hints: ['リボンは、横向きに 1周、たて向きに 1周 して いるよ。', '1周するとき、高さの ところを 2回 通る。', '2周で…'],
+        diagnose: (v) => (v === 2 ? '横向きの 1周と、たて向きの 1周、それぞれで 2回ずつ 通るよ。' : null),
+      }),
+      num({
+        label: '全部の長さ', prompt: 'リボンは 全部で 何cm？', answer: total, unit: 'cm', pad: { kind: 'calc', ops: ['×', '+'] },
+        hints: [`横 ${L}cm を 2回、たて ${W}cm を 2回、高さ ${H}cm を 4回。`, `${L}×2 ＋ ${W}×2 ＋ ${H}×4 ＋ 結び目`, `${L * 2} ＋ ${W * 2} ＋ ${H * 4} ＋ ${bow}`],
+        diagnose: (v) => (v === total - bow ? `結び目の ${bow}cm を わすれずに たそう。` : v === total - H * 2 ? '高さの ところは 4回 通るよ。' : v === L + W + H + bow ? '横も たても、上と 下で 2回ずつ 通るよ。' : null),
+      }),
+    ],
+    summary: `${L}×2＋${W}×2＋${H}×4＋${bow}＝${total}cm。`,
+    label: `リボン ${L}×${W}×${H}`, q: `箱(${L}×${W}×${H})にかけるリボンの長さ（結び目${bow}cm）`, a: `${total}cm`,
+  };
+}
+
+const RIBBON_NET_DIMS: Dims[] = [[4, 2, 1], [6, 2, 1], [4, 4, 1], [2, 4, 1], [4, 2, 2], [6, 4, 1], [2, 2, 1], [6, 2, 2], [2, 6, 1], [4, 6, 1]];
+
+/** 箱の展開図にリボンの線（真ん中を通る直線）をかく */
+export function genKatsuyoRibbonNet(): Question {
+  for (let t = 0; t < 100; t++) {
+    const dims = pick(RIBBON_NET_DIMS);
+    const [L, W] = dims;
+    // 十字の形の展開図（底を真ん中にして、上下左右に4つ、下の面の先にふた）
+    const f0 = baseFace(dims, 0, 0);
+    const fU = foldStep(dims, f0, 'U'), fD = foldStep(dims, f0, 'D'), fL = foldStep(dims, f0, 'L'), fR = foldStep(dims, f0, 'R');
+    // ふたの面を、どの面の先に つけるか（4通り）
+    const lid = pick([[2, 'D'], [1, 'U'], [3, 'L'], [4, 'R']] as [number, 'D' | 'U' | 'L' | 'R'][]);
+    const side = [f0, fU, fD, fL, fR];
+    const fT = foldStep(dims, side[lid[0]]!, lid[1]);
+    const net = normalizeNet({ dims, faces: [f0, fU, fD, fL, fR, fT], parent: [-1, 0, 0, 0, 0, lid[0]] }, 1, 1);
+    const rects = netRects(net);
+    const b = netBounds(rects);
+    const gw = b.w + 2, gh = b.h + 2;
+    if (gw > 12 || gh > 12) continue;
+    // リボン: 平面 x = L/2 と y = W/2 が 各面を切る線
+    const lines: Seg[] = [];
+    for (const f of net.faces) {
+      for (const [k, c] of [[0, L / 2], [1, W / 2]] as [number, number][]) {
+        const r = f.rect;
+        if (f.u[k] !== 0) {
+          const px = r.x + (c - f.o[k]!) / f.u[k]!;
+          lines.push({ a: { x: px, y: r.y }, b: { x: px, y: r.y + r.h } });
+        } else if (f.v[k] !== 0) {
+          const py = r.y + (c - f.o[k]!) / f.v[k]!;
+          lines.push({ a: { x: r.x, y: py }, b: { x: r.x + r.w, y: py } });
+        }
+      }
+    }
+    const { solid, dashed } = netLines(rects);
+    const u = 10;
+    return {
+      skillId: 'katsuyo-ribbonnet', title: 'リボンの 線', emoji: '🎀',
+      text: `横 ${L * u}cm、たて ${W * u}cm、高さ ${dims[2] * u}cm の 箱に、図のように リボンを かけます。\nリボンが 通る 直線を、下の 展開図に ひきましょう。（方眼の 1マスは ${u}cm）`,
+      figure: cuboidFig([L * u, W * u, dims[2] * u], 'right', { ribbon: true, dimLabels: true }),
+      steps: [{
+        kind: 'sketch', label: 'リボンの線', prompt: '点を 2つ タップして、リボンの 線を ひこう（1本の 線を 何回かに 分けて ひいても よい）。',
+        gw, gh, given: [...solid, ...dashed], expected: lines, useDashed: false,
+        hints: ['リボンは、上の 面と 下の 面の 真ん中で 十字に 交わる。', '横の 面では、真ん中を まっすぐ 通るよ。', `上の 面の 横 ${L}マスの 真ん中、たて ${W}マスの 真ん中を 通る 線。`],
+      }],
+      summary: 'リボンは 面の 真ん中を まっすぐ 通る。展開図では、となりの 面に つながる 直線に なる。',
+      label: `リボンの線 ${L * u}×${W * u}`, q: '展開図にリボンが通る直線をひく', a: '（作図）',
+    };
+  }
+  throw new Error('genKatsuyoRibbonNet');
+}
+
+/* ================================================================== */
+/* ⑦ エラーハンター                                                       */
+/* ================================================================== */
+
+const A_SAYS = (s: string) => `Aさんは、次のように 考えました。\n「${s}」`;
+
+export function genEhEdges(): Question {
+  const dims = cuboidDims('any');
+  const kind = pick(['辺', '頂点', '面'] as const);
+  const said = { 辺: 9, 頂点: 7, 面: 3 }[kind], ans = { 辺: 12, 頂点: 8, 面: 6 }[kind];
+  return {
+    skillId: 'eh-edges', title: '見えて いる ものだけ 数えた', emoji: '🕵️',
+    text: `${A_SAYS(`見取図の ${kind}を 数えたら ${said}${kind === '辺' ? '本' : 'つ'} だったから、直方体の ${kind}は ${said}${kind === '辺' ? '本' : 'つ'}。`)}`,
+    figure: cuboidFig(dims, pickView(), { letters: true }),
+    steps: [
+      choice({
+        label: 'まちがいの もと', prompt: 'Aさんの まちがいの もとは どれ？', correct: kind === '面' ? '見えない 面を 数えて いない' : `見えない ${kind}を 数えて いない`,
+        wrongs: [
+          { text: kind === '面' ? '面は 4つ だから' : '点線の ぶんを 2回 数えた', note: '図を もう一度 見よう。見えない ところは どう かかれて いる？' },
+          { text: '直方体と 立方体で 数が ちがうから', note: '直方体も 立方体も、面・辺・頂点の 数は 同じだよ。' },
+        ],
+        why: `見取図では 見えない ところも ある（点線）。見えない ${kind}も 数えないと いけない。`,
+        hints: ['点線の 辺は、見えない 辺。', '見えない ところは、うしろ・下に ある。', `見える ${kind}だけ 数えると たりない。`],
+      }),
+      num({
+        label: `正しい${kind}の数`, prompt: `正しい ${kind}の 数は？`, answer: ans, unit: kind === '辺' ? '本' : 'つ',
+        hints: ['見えない ところも ふくめて 数えよう。', kind === '辺' ? '4本ずつ 3組。' : kind === '頂点' ? '上に 4つ、下に 4つ。' : '上・下・前・うしろ・右・左。', `Aさんの ${said} に、見えない ぶんを たそう。`],
+        diagnose: (v) => (v === said ? 'Aさんと 同じ答えだよ。見えない ぶんも 数えよう。' : null),
+      }),
+    ],
+    summary: `直方体の ${kind}は ${ans}${kind === '辺' ? '本' : 'つ'}。見えない ところも 数える。`,
+    label: `見えない${kind}の数えわすれ`, q: `Aさん「${kind}は${said}」の直し`, a: `${ans}`,
+  };
+}
+
+export function genEhHidden(): Question {
+  const dims = cuboidDims('any');
+  const view = pickView();
+  const ans = hiddenEdges(view).map(edgeName);
+  return {
+    skillId: 'eh-hidden', title: '見えない 辺を 実線で かいた', emoji: '🕵️',
+    text: `${A_SAYS('直方体の 見取図を かいたよ。辺は 12本 ぜんぶ かいたから だいじょうぶ。')}\n（Aさんは 辺を ぜんぶ 実線で かきました）`,
+    figure: cuboidFig(dims, view, { allSolid: true }),
+    steps: [
+      choice({
+        label: 'まちがい', prompt: 'Aさんの 見取図の まちがいは どれ？', correct: '見えない 辺も 実線で かいた',
+        wrongs: [
+          { text: '辺の 数が たりない', note: '辺は 12本 かいて あるよ。数は あって いる。' },
+          { text: '平行な 辺の 長さが ちがう', note: '平行な 辺は 同じ 長さに かけて いるよ。' },
+        ],
+        why: '見取図では、見えない 辺は 点線で かく。そうしないと、どこが 手前か わからない 図に なる。',
+        hints: ['ほんとうの 箱を 前から 見ると、見えない 辺が ある。', '見えない 辺は どう かく 約束だった？', '点線。'],
+      }),
+      {
+        kind: 'dash', label: '直す', prompt: '見えない 辺を タップして 点線に 直そう。', dims, view, answer: ans,
+        hints: ['おくの 下の 角に 集まる 辺。', '手前の 面に かくれて 見えない 辺。', '3本 あるよ。'],
+      },
+    ],
+    summary: '見えない 3本の 辺を 点線に すると、正しい 見取図に なる。',
+    label: '見えない辺を実線でかいた', q: 'Aさんの見取図の直し', a: ans.map((x) => `辺${x}`).join('、'),
+  };
+}
+
+export function genEhNet(): Question {
+  let cells = randomHexomino();
+  for (let t = 0; t < 500 && isCubeNet(cells); t++) cells = randomHexomino();
+  return {
+    skillId: 'eh-net', title: '6つ つながれば 展開図？', emoji: '🕵️',
+    text: A_SAYS('正方形が 6つ つながって いるから、この 図は 立方体の 展開図だ。'),
+    figure: { type: 'net', rects: cells.map((c) => ({ x: c.x, y: c.y, w: 1, h: 1 })), grid: true },
+    steps: [
+      choice({
+        label: '正しい？', prompt: 'Aさんの 考えは 正しいですか。', correct: '正しくない',
+        wrongs: [{ text: '正しい', note: '頭の 中で 組み立てて みよう。重なる 面は ない？' }],
+        why: '正方形が 6つ つながって いても、組み立てると 重なる 面が できる 形が ある。',
+        hints: ['1つの 面を 底に して 組み立てて みよう。', '同じ ところに 2つの 面が くると、立方体に ならない。', '横に 4つ より 多く ならんで いないかな？'],
+      }),
+      choice({
+        label: '組み立てると', prompt: 'この 図を 組み立てると どう なる？', correct: '面が 重なって、ふさがらない 面が できる',
+        wrongs: [
+          { text: '立方体が できる', note: 'もう一度 組み立てて みよう。' },
+          { text: '直方体が できる', note: '正方形 6まいで 箱を 作ると、できるなら 立方体だよ。' },
+        ],
+        why: '2つの 面が 同じ 場所に きて 重なり、どこかに あなが あく。',
+        hints: ['重なる 面を さがそう。', '重なった ぶん、どこかが たりない。', 'ふたが できない ところが ある。'],
+      }),
+    ],
+    summary: '6つの 正方形が つながって いても、展開図に なるとは かぎらない（全部で 11通り）。',
+    label: '展開図にならない形', q: 'Aさん「6つつながれば展開図」の直し', a: '正しくない（面が重なる）',
+  };
+}
+
+export function genEhOverlap(): Question {
+  const { net, bp, points, faceLabels } = labeledCubeNet();
+  const partners = (i: number) => bp.points.map((p, j) => (j !== i && p.corner === bp.points[i]!.corner ? j : -1)).filter((j) => j >= 0);
+  const n = bp.points.length;
+  const cands = bp.points.map((_, i) => i).filter((i) => partners(i).length === 1);
+  const i = pick(cands);
+  const j = partners(i)[0] as number;
+  const z = [(i + 1) % n, (i + n - 1) % n].find((k) => k !== j) as number;
+  const P = (k: number) => `点${points[k]!.label}`;
+  const others = shuffle(bp.points.map((_, k) => k).filter((k) => k !== i && k !== j && k !== z)).slice(0, 2);
+  return {
+    skillId: 'eh-overlap', title: 'となりの 点が 重なると 思った', emoji: '🕵️',
+    text: `${A_SAYS(`展開図を 組み立てると、${P(i)}と 重なるのは となりの ${P(z)}。`)}\n正しい 答えは どれですか。`,
+    figure: { type: 'net', rects: netRects(net), points, faceLabels, highlightPoint: i },
+    steps: [choice({
+      label: '重なる点', prompt: `${P(i)}と 重なる 点`, correct: P(j),
+      wrongs: [{ text: P(z), note: `Aさんと 同じ答えだよ。${P(z)}は ${P(i)}と 同じ 辺の 両はし。組み立てても はなれて いるよ。` },
+        ...others.map((k) => ({ text: P(k), note: '頭の 中で 面を 折り上げて、どの 点が 集まるか 考えよう。' }))],
+      why: `同じ 辺の 両はしの 点は 重ならない。折ったとき くっつく 辺の はしどうしが 重なる。${P(i)}と ${P(j)}。`,
+      hints: ['同じ 辺の 両はしの 点は、組み立てても はなれた まま。', `${P(i)}が はしに ある 辺が、どの 辺と くっつくか 考えよう。`, '面を 1つずつ 折り上げて みよう。'],
+    })],
+    summary: `${P(i)}と 重なるのは ${P(j)}。`,
+    label: 'となりの点を重なると思った', q: `Aさん「${P(i)}と重なるのは${P(z)}」の直し`, a: P(j),
+  };
+}
+
+export function genEhParallel(): Question {
+  const e = pick(EDGES);
+  const name = edgeName(e);
+  const par = parallelEdges(e).map(edgeName);
+  const onSame = par.find((x) => FACES.some((f) => { const vs = f.name; return vs.includes(x[0]!) && vs.includes(x[1]!) && vs.includes(name[0]!) && vs.includes(name[1]!); })) as string;
+  return {
+    skillId: 'eh-parallel', title: '平行な 辺を 1本だけ 答えた', emoji: '🕵️',
+    text: `${A_SAYS(`辺${name}に 平行な 辺は、同じ 面の 向かいに ある 辺${onSame}だけ。`)}\n正しく 全部 えらびましょう。`,
+    figure: cuboidFig(cuboidDims('distinct'), pickView(), { letters: true, highlight: [name] }),
+    steps: [edgeMulti({
+      label: '平行な辺', prompt: `辺${name}に 平行な 辺（全部）`, correct: par, exclude: [name],
+      why: '同じ 面の 上だけで なく、はなれた ところにも 同じ 向きの 辺が ある。直方体では 3本。',
+      hints: ['同じ 向きの 辺を、見えない 辺も ふくめて さがそう。', 'となりの 面や、向かいの 面にも ある。', '全部で 3本。'],
+      diagnose: (p) => (p.length === 1 && p[0] === onSame ? 'Aさんと 同じ答えだよ。はなれた ところにも 平行な 辺が あるよ。' : null),
+    })],
+    summary: `辺${name}に 平行な 辺は ${par.map((x) => `辺${x}`).join('・')}。`,
+    label: '平行な辺を1本だけ', q: `辺${name}に平行な辺を全部`, a: par.map((x) => `辺${x}`).join('、'),
+  };
+}
+
+export function genEhPerp(): Question {
+  const e = pick(EDGES);
+  const name = edgeName(e);
+  const per = perpendicularEdges(e).map(edgeName);
+  const par = parallelEdges(e).map(edgeName);
+  const skew = pick(EDGES.map(edgeName).filter((x) => x !== name && !per.includes(x) && !par.includes(x)));
+  return {
+    skillId: 'eh-perp', title: '交わらない 辺を 垂直と した', emoji: '🕵️',
+    text: `${A_SAYS(`辺${skew}は、辺${name}と 向きが ちがうから、辺${name}に 垂直な 辺だ。`)}`,
+    figure: cuboidFig(cuboidDims('distinct'), pickView(), { letters: true, highlight: [name, skew] }),
+    steps: [
+      choice({
+        label: 'まちがい', prompt: 'Aさんの 考えの まちがいは どれ？', correct: `辺${skew}は 辺${name}と 交わらない`,
+        wrongs: [
+          { text: `辺${skew}は 辺${name}と 平行`, note: '向きが ちがう 辺は 平行では ないよ。' },
+          { text: 'Aさんは 正しい', note: '垂直な 辺は、直角に 交わる 辺だったね。2本の 辺は 交わって いる？' },
+        ],
+        why: '垂直な 辺は、直角に 交わる 辺。向きが ちがっても、交わらない 辺は 垂直とは いわない。',
+        hints: ['垂直の 約束を 思い出そう。', `辺${name}と 辺${skew}は、どこかで 交わって いる？`, '交わって いなければ 垂直とは いわない。'],
+      }),
+      edgeMulti({
+        label: '垂直な辺', prompt: `辺${name}に 垂直な 辺（全部）`, correct: per, exclude: [name],
+        why: `辺${name}の 両はしで 直角に 交わる 4本。`,
+        hints: [`頂点${e[0]}に 集まる 辺を 見よう。`, `頂点${e[1]}に 集まる 辺も 見よう。`, '2本ずつで 4本。'],
+        diagnose: (p) => (p.includes(skew) ? `辺${skew}は 辺${name}と 交わらないよ。` : null),
+      }),
+    ],
+    summary: `辺${name}に 垂直なのは ${per.map((x) => `辺${x}`).join('・')}。辺${skew}は 交わらないので 垂直では ない。`,
+    label: '交わらない辺を垂直とした', q: `Aさん「辺${skew}は辺${name}に垂直」の直し`, a: per.map((x) => `辺${x}`).join('、'),
+  };
+}
+
+export function genEhIchi(): Question {
+  const { w, h, pts } = planePoints(2);
+  const t = pts[1]!;
+  return {
+    skillId: 'eh-ichi', title: '横と たてを 逆に した', emoji: '🕵️',
+    text: `${A_SAYS(`点Aを もとに すると、点${t.label}の 位置は（横 ${t.y}cm、たて ${t.x}cm）。`)}\n正しく 表しましょう。`,
+    figure: { type: 'plane', w, h, points: [{ x: 0, y: 0, label: 'A' }, ...pts] },
+    steps: [
+      num({ label: '横', prompt: `点${t.label}は 横 何cm？`, answer: t.x, before: '横', unit: 'cm', hints: ['横は 右へ 進む 長さ。', `点${t.label}の 真下の 目もり。`, 'Aさんは 横と たてを 入れかえて いるよ。'], diagnose: (v) => (v === t.y ? 'Aさんと 同じだよ。' + swapNote : null) }),
+      num({ label: 'たて', prompt: `点${t.label}は たて 何cm？`, answer: t.y, before: 'たて', unit: 'cm', hints: ['たては 上へ 進む 長さ。', `点${t.label}の 真横の 目もり。`, '横を 先、たてを あと。'], diagnose: (v) => (v === t.x ? swapNote : null) }),
+    ],
+    summary: `点${t.label}は（横 ${t.x}cm、たて ${t.y}cm）。横が 先。`,
+    label: '横とたてを逆にした', q: `Aさん「点${t.label}は横${t.y}、たて${t.x}」の直し`, a: `横${t.x}cm、たて${t.y}cm`,
+  };
+}
+
+export function genEhFace(): Question {
+  const dims = cuboidDims('distinct');
+  const [L, W, H] = dims;
+  const [a, b] = pick([[W, L], [H, L], [H, W]] as [number, number][]);
+  return {
+    skillId: 'eh-face', title: '同じ形の 面を 1つと した', emoji: '🕵️',
+    text: `${A_SAYS(`この 直方体で、たて ${a}cm、横 ${b}cm の 長方形の 面は、見えて いる 1つだけ。`)}`,
+    figure: cuboidFig(dims, pickView(), { dimLabels: true }),
+    steps: [
+      choice({
+        label: 'まちがい', prompt: 'Aさんの まちがいは どれ？', correct: '向かい合う 面も 同じ 形',
+        wrongs: [
+          { text: '見えて いる 面は ほかの 形', note: '見えて いる 面の 長さを たしかめよう。あって いるよ。' },
+          { text: '長方形の 面は ない', note: '直方体には 長方形の 面が あるよ。' },
+        ],
+        why: '直方体の 向かい合う 面は、同じ 形・同じ 大きさ。見えない うしろ側にも 同じ 面が ある。',
+        hints: ['見えない 面も ある。', '向かい合う 面を 考えよう。', '同じ 形の 面は 2つずつ。'],
+      }),
+      num({
+        label: '正しい数', prompt: `たて ${a}cm、横 ${b}cm の 面は いくつ？`, answer: 2, unit: 'つ',
+        hints: ['向かい合う 面は 同じ 形。', '見えて いる 1つと、その 向かい側。', '2つずつ 3組。'],
+        diagnose: (v) => (v === 1 ? 'Aさんと 同じ答えだよ。向かい合う 面を わすれずに。' : null),
+      }),
+    ],
+    summary: '直方体は、同じ 形の 面が 2つずつ 3組。',
+    label: '同じ形の面を1つとした', q: `Aさん「${a}×${b}の面は1つ」の直し`, a: '2つ',
+  };
+}
+
+/* ================================================================== */
+/* 登録表                                                                */
+/* ================================================================== */
+
+export const GENERATORS: Record<string, () => Question> = {
+  'kousei-cube': () => genKouseiCube('all'),
+  'kousei-cuboid': () => genKouseiCuboid('all'),
+  'kousei-sort': genKouseiSort,
+  'kousei-higo': genKouseiHigo,
+  'kousei-paper': () => genKouseiPaper('any'),
+  'heiko-face': () => genHeikoFace('all'),
+  'heiko-edge': genHeikoEdge,
+  'heiko-edgeperp': genHeikoEdgePerp,
+  'heiko-faceedge': () => genHeikoFaceEdge('all'),
+  'tenkai-cubeok': genTenkaiCubeOk,
+  'tenkai-cube': () => genTenkaiCube(),
+  'tenkai-cuboid': () => genTenkaiCuboid(),
+  'tenkai-point': genTenkaiPoint,
+  'tenkai-edge': genTenkaiEdge,
+  'tenkai-face': () => genTenkaiFace('all'),
+  'mitori-hidden': genMitoriHidden,
+  'mitori-count': genMitoriCount,
+  'mitori-draw': () => genMitoriDraw(),
+  'ichi-read': genIchiRead,
+  'ichi-plot': genIchiPlot,
+  'ichi-space': genIchiSpace,
+  'katsuyo-ribbon': genKatsuyoRibbon,
+  'katsuyo-ribbonnet': genKatsuyoRibbonNet,
+  'eh-edges': genEhEdges,
+  'eh-face': genEhFace,
+  'eh-hidden': genEhHidden,
+  'eh-net': genEhNet,
+  'eh-overlap': genEhOverlap,
+  'eh-parallel': genEhParallel,
+  'eh-perp': genEhPerp,
+  'eh-ichi': genEhIchi,
+};
+
+export function generate(skillId: string): Question {
+  const g = GENERATORS[skillId];
+  if (!g) throw new Error(`generate: 知らない項目です (${skillId})`);
+  return g();
+}
+
+/** 検査用: 展開図の答え（しめるマス）が、もとの完成形をふくむか */
+export const _forVerify = { cellsOf, v3key };
