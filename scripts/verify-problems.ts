@@ -235,6 +235,26 @@ for (const id of Object.keys(GENERATORS)) {
   table.push(`${id.padEnd(18)} ${String(seen.size).padStart(5)} 通り  ${((Date.now() - t0) / N).toFixed(1)}ms/問`);
 }
 
+// エラーハンターの「選ぶ」答えを 長さで 当てられないか（正しい選択肢が いちばん長い／短い が 45% 以下。2026-11）
+{
+  const len = (t: unknown) => String(t).replace(/\s+/g, '').length;
+  let all = 0, longest = 0, shortest = 0;
+  for (const id of Object.keys(GENERATORS).filter((k) => k.startsWith('eh-'))) {
+    for (let i = 0; i < 200; i++) {
+      for (const st of generate(id).steps as unknown as { kind: string; choices?: unknown[]; correct?: number }[]) {
+        if (st.kind !== 'choice' || !st.choices || st.choices.length < 3 || typeof st.correct !== 'number') continue;
+        const L = st.choices.map(len); const c = L[st.correct]!;
+        all++;
+        if (L.every((l, j) => j === st.correct || l < c)) longest++;
+        if (L.every((l, j) => j === st.correct || l > c)) shortest++;
+      }
+    }
+  }
+  const lp = Math.round((longest / Math.max(all, 1)) * 100), sp = Math.round((shortest / Math.max(all, 1)) * 100);
+  table.push(`エラーハンターの選択肢: 正しいものが いちばん長い ${lp}%・いちばん短い ${sp}%`);
+  if (lp > 45 || sp > 45) fail('eh-choice', `正しい選択肢が いちばん長い ${lp}%・いちばん短い ${sp}%（45% 以下にする）`);
+}
+
 console.log(table.join('\n'));
 if (failures > 0) {
   console.error(`\n${failures} 件の問題があります`);
