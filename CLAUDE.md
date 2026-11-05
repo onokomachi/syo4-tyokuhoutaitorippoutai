@@ -20,6 +20,8 @@
 - 学級ポータルへの登録（kit のカタログ `rippoutai`・`apps` の1行・Vercel の環境変数）はまだ。カタログは
   `npm run catalog > ../learning-app-kit/src/catalog/rippoutai.ts` で作る（誤概念は `scripts/export-catalog.ts` に手で書く）。
 - 共通ファイル（`useAdaptive.ts` など）はここで直さない。
+- **動画・画像などの大きな素材は、このアプリの `public/` に入れない**（2026-11-05）。共通置き場 `onokomachi/learning-media`（`https://learning-media-snowy.vercel.app`）に置き、`src/lib/media.ts` の `media('/videos/…')` で読む。
+  `public/` に入れると、直すたびのデプロイで同じ動画が丸ごと保存され、Vercel の Deployment Storage（10GB）を使いきる。置き場のファイルは上書きしない（新しい名前で足す）。
 
 ## 確かめ方
 - `npm run check`（学級ポータルのルール点検・型チェック・問題の機械検査・ビルド）
