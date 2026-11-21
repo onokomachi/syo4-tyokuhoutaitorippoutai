@@ -1,6 +1,6 @@
 /**
  * ボス戦モード（インフェルノ限定・スペシャルステージ）。
- * 「天空神」（ゼウスのような雷の神）と、RPS風の2本立てシステムで戦う。
+ * 「童神（どうじん）」（ピンクのうさぎ服の、無邪気で巨大な男の子の神）と、RPS風の2本立てシステムで戦う。
  * - ボスは プレイヤーの解答状況と無関係に、難易度ごとの一定間隔で行動ゲージが満ちて
  *   通常攻撃／タメ攻撃（必殺技・予告あり）を自動発動する。
  * - プレイヤーは問題に正解すると「アクションポイント」を獲得し、貯めた分をいつでも使って
@@ -12,7 +12,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import confetti from 'canvas-confetti';
 import {
-  ChevronLeft, Cloud, Heart, Home, Lock, RotateCcw, Shield, ShieldCheck, Skull, Swords, Trophy, Zap,
+  ChevronLeft, Heart, Home, Lock, RotateCcw, Shield, ShieldCheck, Skull, Smile, Swords, Trophy, Zap,
 } from 'lucide-react';
 import { useProgressStore } from '../../store/progressStore';
 import { useBadgeRatio } from '../../lib/useBadgeRatio';
@@ -24,15 +24,17 @@ import { TestProblem } from '../../lib/testConfig';
 import { playCorrect, playClear, playSoftTry } from '../../lib/sound';
 import { QuestionRound } from '../shared/QuestionRound';
 import { media } from '../../lib/media';
+import { VIDEO_TYPE } from '../ui/ThemeVideo';
+import { DoujinName } from '../ui/DoujinName';
 
 interface Props { onExit: () => void; }
 
-const BOSS_NAME = '天空神';
 const VIDEO = {
-  idle: media('/videos/boss-common/idle.mp4'),
-  normal: media('/videos/boss-common/attack-normal.mp4'),
-  special: media('/videos/boss-common/attack-special.mp4'),
+  idle: { mp4: media('/videos/rippoutai/boss/idle.mp4'), webm: media('/videos/rippoutai/boss/idle.webm') },
+  normal: media('/videos/rippoutai/boss/attack-normal.mp4'),
+  special: media('/videos/rippoutai/boss/attack-special.mp4'),
 };
+const IDLE_POSTER = media('/videos/rippoutai/boss/idle-poster.jpg');
 
 type Phase = 'INTRO' | 'BATTLE' | 'RESULT';
 type AttackKind = 'normal' | 'special' | null;
@@ -304,18 +306,18 @@ export const BossBattleModule: React.FC<Props> = ({ onExit }) => {
           </button>
 
           <div className="text-center mt-4 mb-8">
-            <div className="w-24 h-24 rounded-3xl bg-cyan-500/20 text-cyan-300 flex items-center justify-center mx-auto mb-4 ring-2 ring-cyan-400/40">
-              <Cloud size={48} />
+            <div className="w-24 h-24 rounded-3xl bg-pink-500/20 text-pink-300 flex items-center justify-center mx-auto mb-4 ring-2 ring-pink-400/40">
+              <Smile size={48} />
             </div>
-            <h1 className="text-3xl font-black text-white mb-2">ボス戦：{BOSS_NAME}</h1>
-            <p className="text-white/70 font-bold">雷を まとった 天空神と、正解で貯めたポイントを つかって たたかおう！</p>
+            <h1 className="text-3xl font-black text-white mb-2">ボス戦：<DoujinName /></h1>
+            <p className="text-white/70 font-bold">ピンクのうさぎ服の 巨大な 童神と、正解で貯めたポイントを つかって たたかおう！</p>
           </div>
 
           {!unlocked && (
             <div className="bg-white/5 border border-white/10 rounded-[28px] p-8 text-center">
               <Lock size={40} className="mx-auto mb-4 text-white/50" />
               <p className="text-white font-black text-lg mb-1">まだ 挑戦できません</p>
-              <p className="text-white/60 font-bold text-sm">テーマ「インフェルノ」を 解放すると 挑戦できます（{req}）</p>
+              <p className="text-white/60 font-bold text-sm">テーマ「おもちゃの雲」を 解放すると 挑戦できます（{req}）</p>
               <p className="text-white/40 font-bold text-xs mt-2">いまの バッジ獲得率：{Math.round(ratio * 100)}%</p>
             </div>
           )}
@@ -369,7 +371,7 @@ export const BossBattleModule: React.FC<Props> = ({ onExit }) => {
           <motion.div initial={{ scale: 0.8 }} animate={{ scale: 1 }} className={`w-24 h-24 rounded-3xl flex items-center justify-center mx-auto mb-6 ${win ? 'bg-amber-500/20 text-amber-400 ring-2 ring-amber-400/40' : 'bg-white/10 text-white/60 ring-2 ring-white/20'}`}>
             {win ? <Trophy size={48} /> : <Skull size={48} />}
           </motion.div>
-          <h1 className="text-3xl font-black text-white mb-2">{win ? `${BOSS_NAME}を たおした！` : 'やられてしまった…'}</h1>
+          <h1 className="text-3xl font-black text-white mb-2">{win ? <><DoujinName />を たおした！</> : 'やられてしまった…'}</h1>
           <p className="text-white/70 font-bold mb-8">
             {win ? `${config.label} クリア！ すごい実力だ！` : 'おしい！ もう一度 ちょうせんしてみよう。'}
           </p>
@@ -403,7 +405,10 @@ export const BossBattleModule: React.FC<Props> = ({ onExit }) => {
   return (
     <div className="relative w-full h-full overflow-hidden bg-black select-none">
       {/* ボス動画レイヤー */}
-      <video src={VIDEO.idle} autoPlay loop muted playsInline className="absolute inset-0 w-full h-full object-cover" />
+      <video autoPlay loop muted playsInline preload="auto" poster={IDLE_POSTER} disablePictureInPicture tabIndex={-1} className="absolute inset-0 w-full h-full object-cover">
+        <source src={VIDEO.idle.mp4} type={VIDEO_TYPE.mp4} />
+        <source src={VIDEO.idle.webm} type={VIDEO_TYPE.webm} />
+      </video>
       <AnimatePresence>
         {attackPlaying && (
           <motion.video
@@ -442,7 +447,7 @@ export const BossBattleModule: React.FC<Props> = ({ onExit }) => {
               </button>
               <span className="text-white/80 font-black text-xs">{config.label}　{questionsExhausted ? 'もんだい終了' : `${qIndex + 1}/${questions.length}問`}</span>
             </div>
-            <HpBar label={BOSS_NAME} hp={bossHp} max={config.hp} color="bg-gradient-to-r from-cyan-400 to-indigo-500" icon={<Cloud size={16} />} />
+            <HpBar label={<DoujinName />} hp={bossHp} max={config.hp} color="bg-gradient-to-r from-cyan-400 to-indigo-500" icon={<Smile size={16} />} />
             <div>
               <div className="h-1.5 rounded-full bg-black/40 overflow-hidden">
                 <div
@@ -467,7 +472,7 @@ export const BossBattleModule: React.FC<Props> = ({ onExit }) => {
                   }`}
                 >
                   <Zap size={16} />
-                  {bossTelegraph === 'charge' ? '天空神が 必殺技を ためている！ ガードで そなえよう！' : '天空神が 力を ためている…'}
+                  <DoujinName />{bossTelegraph === 'charge' ? 'が 必殺技を ためている！ ガードで そなえよう！' : 'が 力を ためている…'}
                 </motion.div>
               )}
             </AnimatePresence>
@@ -531,7 +536,7 @@ export const BossBattleModule: React.FC<Props> = ({ onExit }) => {
             {questionsExhausted && (
               <div className="bg-surface/95 backdrop-blur-md rounded-[26px] shadow-2xl border border-line p-6 text-center shrink-0">
                 <p className="font-black text-content mb-1">もんだいは ぜんぶ といた！</p>
-                <p className="text-sm text-muted font-bold">のこった ポイントを つかって、天空神を たおそう！</p>
+                <p className="text-sm text-muted font-bold">のこった ポイントを つかって、<DoujinName />を たおそう！</p>
               </div>
             )}
           </div>

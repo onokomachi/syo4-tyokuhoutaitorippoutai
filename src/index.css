@@ -60,58 +60,58 @@
   /* ▼ 特別解放テーマ（バッジ収集で解放）。いずれも「暗い背景 × ネオン」系。
      --neon(r,g,b)/--panel/--panel-strong は §共有オーバーライドで使う追加トークン。 */
 
-  /* 桜吹雪（さくらふぶき）= 夜桜：漆黒の夜空 × 舞い散る桜の花びら × ピンクのネオン。バッジ50%で解放 */
+  /* つみきの空（つみきのそら）= ゆめいろの夕ぞら：紺 → すみれ → ももいろの空 × 回るつみき × 雲。バッジ50%で解放 */
   body[data-theme='sakura'] {
-    --c-bg: #0d0416;
-    --c-surface: #170a22;
-    --c-surface-2: #0a020f;
-    --c-surface-3: #221033;
-    --c-content: #ffd3e4;
-    --c-muted: #e08fb4;
-    --c-faint: #a05f85;
-    --c-line: #7c3a63;
-    --c-brand: #ff7bac;
-    --c-brand-strong: #ffb3cf;
-    --c-on-brand: #23000f;
-    --neon: 255, 140, 185;
-    --panel: #1a0b24;
-    --panel-strong: rgba(120, 40, 85, 0.85);
+    --c-bg: #150e33;
+    --c-surface: #1f1547;
+    --c-surface-2: #110a2a;
+    --c-surface-3: #2b1d5c;
+    --c-content: #ffe9f5;
+    --c-muted: #d9b8f0;
+    --c-faint: #9a82c7;
+    --c-line: #6b4aa8;
+    --c-brand: #ff8fc4;
+    --c-brand-strong: #ffc2de;
+    --c-on-brand: #2a0a1c;
+    --neon: 255, 160, 210;
+    --panel: #1a1140;
+    --panel-strong: rgba(90, 50, 150, 0.85);
   }
 
-  /* インフェルノ = 業火：黒曜石の闇 × 立ちのぼる火の粉 × 深紅の炎。バッジ75%で解放 */
+  /* おもちゃの雲 = 雲の海のおもちゃ箱：空色の夜 × ふわふわの雲 × シャボンの光。バッジ75%で解放（ボス戦もここで挑戦できる） */
   body[data-theme='inferno'] {
-    --c-bg: #0a0100;
-    --c-surface: #180502;
-    --c-surface-2: #0c0200;
-    --c-surface-3: #240903;
-    --c-content: #ffb37a;
-    --c-muted: #e0713a;
-    --c-faint: #9c4a22;
-    --c-line: #86341a;
-    --c-brand: #ff5a1f;
-    --c-brand-strong: #ff9558;
-    --c-on-brand: #1c0500;
-    --neon: 255, 100, 30;
-    --panel: #1c0703;
-    --panel-strong: rgba(130, 40, 5, 0.85);
+    --c-bg: #0c1838;
+    --c-surface: #14244d;
+    --c-surface-2: #0a1330;
+    --c-surface-3: #1d3166;
+    --c-content: #eaf6ff;
+    --c-muted: #b3d3f0;
+    --c-faint: #7b9ac4;
+    --c-line: #3f5f9a;
+    --c-brand: #7fd3ff;
+    --c-brand-strong: #bfe8ff;
+    --c-on-brand: #04203a;
+    --neon: 150, 215, 255;
+    --panel: #0f1d44;
+    --panel-strong: rgba(50, 90, 170, 0.82);
   }
 
-  /* 天空神（てんくうしん）= 神々の空：黄昏の大空 × 金色の光条 × 流れる雲。バッジ100%で解放 */
+  /* 童神（どうじん）= ゆうやけのいたずらっ子：夕やけ色の闇 × ピンクのうさぎ服 × 星の紙ふぶき。バッジ100%で解放 */
   body[data-theme='tenkuu'] {
-    --c-bg: #041022;
-    --c-surface: #0a1c34;
-    --c-surface-2: #030b1a;
-    --c-surface-3: #12294a;
-    --c-content: #ffe9a8;
-    --c-muted: #a8cbe8;
-    --c-faint: #6d8fb5;
-    --c-line: #3c608c;
-    --c-brand: #ffd24a;
-    --c-brand-strong: #ffe58f;
-    --c-on-brand: #221a00;
-    --neon: 255, 215, 120;
-    --panel: #081a30;
-    --panel-strong: rgba(60, 100, 160, 0.82);
+    --c-bg: #24101e;
+    --c-surface: #321628;
+    --c-surface-2: #1c0a16;
+    --c-surface-3: #43203a;
+    --c-content: #fff0e4;
+    --c-muted: #f2c0b0;
+    --c-faint: #b88a86;
+    --c-line: #94505e;
+    --c-brand: #ff9ec0;
+    --c-brand-strong: #ffc8dc;
+    --c-on-brand: #2a0816;
+    --neon: 255, 170, 190;
+    --panel: #2b1022;
+    --panel-strong: rgba(150, 60, 90, 0.85);
   }
 
   /* 極光（きょっこう）= オーロラ：北極の夜空 × 緑＋紫の光のカーテン。バッジ75%で解放 */
@@ -153,9 +153,9 @@
 
   /* スマホの FOUC・合成誤差対策: 暗背景テーマは背景色を確実に固定する */
   body[data-theme='aurora'] { background-color: #020309 !important; }
-  body[data-theme='sakura'] { background-color: #0d0416 !important; }
-  body[data-theme='inferno'] { background-color: #0a0100 !important; }
-  body[data-theme='tenkuu'] { background-color: #041022 !important; }
+  body[data-theme='sakura'] { background-color: #150e33 !important; }
+  body[data-theme='inferno'] { background-color: #0c1838 !important; }
+  body[data-theme='tenkuu'] { background-color: #24101e !important; }
 
   /* 極光：やわらかな緑白の発光（オーロラ） */
   body[data-theme='aurora'] {
@@ -163,22 +163,22 @@
     text-shadow: 0 0 5px rgba(120, 255, 170, 0.4), 0 0 12px rgba(150, 120, 255, 0.25);
     letter-spacing: 0.03em;
   }
-  /* 桜吹雪：ほんのり桜色の発光 */
+  /* つみきの空：ほんのり ももいろの発光 */
   body[data-theme='sakura'] {
     font-family: "BIZ UDPGothic", "Inter", ui-sans-serif, sans-serif;
-    text-shadow: 0 0 5px rgba(255, 140, 185, 0.35), 0 0 12px rgba(255, 140, 185, 0.18);
+    text-shadow: 0 0 5px rgba(255, 160, 210, 0.35), 0 0 12px rgba(190, 140, 255, 0.2);
     letter-spacing: 0.03em;
   }
-  /* インフェルノ：炎のゆらめく発光 */
+  /* おもちゃの雲：空色のやわらかい発光 */
   body[data-theme='inferno'] {
     font-family: "BIZ UDPGothic", "Inter", ui-sans-serif, sans-serif;
-    text-shadow: 0 0 5px rgba(255, 100, 30, 0.45), 0 0 14px rgba(255, 60, 0, 0.22);
+    text-shadow: 0 0 5px rgba(150, 215, 255, 0.4), 0 0 12px rgba(190, 150, 255, 0.2);
     letter-spacing: 0.03em;
   }
-  /* 天空神：神々しい金色の光 */
+  /* 童神：夕やけ色のあたたかい光 */
   body[data-theme='tenkuu'] {
     font-family: "BIZ UDPGothic", "Inter", ui-sans-serif, sans-serif;
-    text-shadow: 0 0 5px rgba(255, 215, 120, 0.45), 0 0 12px rgba(160, 200, 255, 0.22);
+    text-shadow: 0 0 5px rgba(255, 170, 190, 0.45), 0 0 12px rgba(255, 215, 120, 0.22);
     letter-spacing: 0.03em;
   }
 }

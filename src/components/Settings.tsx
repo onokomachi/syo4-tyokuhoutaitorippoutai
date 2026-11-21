@@ -4,23 +4,24 @@
  */
 import React from 'react';
 import { motion } from 'motion/react';
-import { X, Sun, Flower2, Terminal, Flame, Sparkles, Cloud, Lock, Music, Music2 } from 'lucide-react';
+import { X, Sun, Terminal, Sparkles, Box, Cloud, Smile, Lock, Music, Music2 } from 'lucide-react';
 import { useSettingsStore, Theme, FontScale } from '../store/settingsStore';
 import { THEME_UNLOCK, isThemeUnlocked } from '../lib/themeUnlock';
 import { useBadgeRatio } from '../lib/useBadgeRatio';
 import { JoinSettingsRow } from 'learning-app-kit/react';
+import { DoujinName, DOUJIN_TEXT } from './ui/DoujinName';
 
 interface Props {
   onClose: () => void;
 }
 
-const THEMES: { id: Theme; label: string; icon: React.ReactNode; swatch: string }[] = [
+const THEMES: { id: Theme; label: string; node?: React.ReactNode; icon: React.ReactNode; swatch: string }[] = [
   { id: 'light', label: 'ノーマル', icon: <Sun size={22} />, swatch: 'bg-surface border-slate-300' },
   { id: 'dark', label: 'マトリックス', icon: <Terminal size={22} />, swatch: 'bg-black border-green-500' },
   { id: 'aurora', label: '極光', icon: <Sparkles size={22} />, swatch: 'bg-[#060c16] border-purple-400' },
-  { id: 'sakura', label: '桜吹雪', icon: <Flower2 size={22} />, swatch: 'bg-[#12051c] border-pink-400' },
-  { id: 'inferno', label: 'インフェルノ', icon: <Flame size={22} />, swatch: 'bg-[#0c0100] border-orange-500' },
-  { id: 'tenkuu', label: '天空神', icon: <Cloud size={22} />, swatch: 'bg-[#041022] border-yellow-300' },
+  { id: 'sakura', label: 'つみきの空', icon: <Box size={22} />, swatch: 'bg-[#2a1a5e] border-pink-300' },
+  { id: 'inferno', label: 'おもちゃの雲', icon: <Cloud size={22} />, swatch: 'bg-[#0c1838] border-sky-300' },
+  { id: 'tenkuu', label: DOUJIN_TEXT, node: <DoujinName />, icon: <Smile size={22} />, swatch: 'bg-[#24101e] border-pink-400' },
 ];
 
 const FONTS: { id: FontScale; label: string; sample: string }[] = [
@@ -98,7 +99,7 @@ const PORTAL = {
                   <span className={`w-10 h-10 rounded-full border-2 ${t.swatch}`} />
                   <span className="flex items-center gap-1 text-sm font-bold text-content">
                     {t.icon}
-                    {t.label}
+                    {t.node ?? t.label}
                   </span>
                   {!unlocked && (
                     <span className="absolute inset-0 rounded-2xl bg-black/45 flex flex-col items-center justify-center gap-1 text-white">

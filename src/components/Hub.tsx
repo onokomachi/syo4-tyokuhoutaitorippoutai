@@ -17,6 +17,7 @@ import { useBadgeRatio } from '../lib/useBadgeRatio';
 import { THEME_UNLOCK, isThemeUnlocked } from '../lib/themeUnlock';
 import { TrialCard } from 'learning-app-kit/react';
 import { FLOOR_COUNT } from '../lib/trialConfig';
+import { DoujinName } from './ui/DoujinName';
 
 interface Props {
   onSelectModule: (id: ModuleId) => void;
@@ -223,9 +224,9 @@ export const Hub: React.FC<Props> = ({ onSelectModule, onOpenLog, onStartTest, o
             {bossUnlocked ? <Swords size={30} /> : <Lock size={26} />}
           </div>
           <div className="flex-1">
-            <div className="text-xl font-black flex items-center gap-2">⚡ ボス戦：天空神</div>
+            <div className="text-xl font-black flex items-center gap-2">⚡ ボス戦：<DoujinName /></div>
             <div className={`text-sm font-medium ${bossUnlocked ? 'text-white/85' : 'text-faint'}`}>
-              {bossUnlocked ? '正解でポイントを貯めて、こうげき・かいふく・ガードを選びながら戦おう！' : `インフェルノを 解放すると 挑戦できます（${THEME_UNLOCK.inferno.label}）`}
+              {bossUnlocked ? '正解でポイントを貯めて、こうげき・かいふく・ガードを選びながら戦おう！' : `「おもちゃの雲」を 解放すると 挑戦できます（${THEME_UNLOCK.inferno.label}）`}
             </div>
           </div>
           {bossUnlocked && <ChevronRight size={28} className="shrink-0 opacity-80" />}
