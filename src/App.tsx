@@ -18,9 +18,9 @@ import { useApplySettings } from './lib/useApplySettings';
 import { useSettingsStore } from './store/settingsStore';
 import { MatrixRain } from './components/ui/MatrixRain';
 import { AuroraRain } from './components/ui/AuroraRain';
-import { SakuraRain } from './components/ui/SakuraRain';
-import { InfernoRain } from './components/ui/InfernoRain';
-import { TenkuuRain } from './components/ui/TenkuuRain';
+import { ToyBlocksBackground } from './components/ui/ToyBlocksBackground';
+import { ToylandVideoBackground } from './components/ui/ToylandVideoBackground';
+import { DoujinBackground } from './components/ui/DoujinBackground';
 import { TrialLock, useTrialLocked } from 'learning-app-kit/react';
 import { mathTrialKey } from 'learning-app-kit/sync';
 
@@ -49,12 +49,17 @@ export default function App() {
 
   return (
     <div className="w-full h-screen overflow-hidden select-none bg-bg">
-      {/* テーマ別の動く背景（各コンポーネントが自分のテーマ以外では何も描画しない） */}
-      <MatrixRain />
-      <AuroraRain />
-      <SakuraRain />
-      <InfernoRain />
-      <TenkuuRain />
+      {/* テーマ別の動く背景（各コンポーネントが自分のテーマ以外では何も描画しない）。
+          ボス戦は画面全体を自前の動画でおおうので、見えない背景の動画・アニメーションは止めておく。 */}
+      {view.kind !== 'BOSS' && (
+        <>
+          <MatrixRain />
+          <AuroraRain />
+          <ToyBlocksBackground />
+          <ToylandVideoBackground />
+          <DoujinBackground />
+        </>
+      )}
 
       <div className="relative z-10 w-full h-full">
         <AnimatePresence mode="wait">

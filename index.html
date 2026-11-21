@@ -19,7 +19,7 @@
         try {
           var raw = localStorage.getItem('rippoutai_settings_v1');
           var theme = (raw && JSON.parse(raw).state && JSON.parse(raw).state.theme) || 'light';
-          var BG = { light: '#eef2f7', dark: '#000000', aurora: '#020309', sakura: '#0d0416', inferno: '#0a0100', tenkuu: '#041022' };
+          var BG = { light: '#eef2f7', dark: '#000000', aurora: '#020309', sakura: '#150e33', inferno: '#0c1838', tenkuu: '#24101e' };
           var bg = BG[theme] || '#eef2f7';
           window.__theme = theme;
           document.documentElement.style.backgroundColor = bg;
@@ -49,7 +49,7 @@
       (function () {
         try {
           var theme = window.__theme || 'light';
-          var BG = { light: '#eef2f7', dark: '#000000', aurora: '#020309', sakura: '#0d0416', inferno: '#0a0100', tenkuu: '#041022' };
+          var BG = { light: '#eef2f7', dark: '#000000', aurora: '#020309', sakura: '#150e33', inferno: '#0c1838', tenkuu: '#24101e' };
           var bg = BG[theme] || '#eef2f7';
           document.body.setAttribute('data-theme', theme);
           document.body.style.backgroundColor = bg;

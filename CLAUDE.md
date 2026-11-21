@@ -23,6 +23,11 @@
 - **動画・画像などの大きな素材は、このアプリの `public/` に入れない**（2026-11-05）。共通置き場 `onokomachi/learning-media`（`https://learning-media-snowy.vercel.app`）に置き、`src/lib/media.ts` の `media('/videos/…')` で読む。
   `public/` に入れると、直すたびのデプロイで同じ動画が丸ごと保存され、Vercel の Deployment Storage（10GB）を使いきる。置き場のファイルは上書きしない（新しい名前で足す）。
 
+- **テーマ（背景）の世界観と、内部IDの対応**（2026-11-21。つみき・おもちゃの世界。ボスは「童神（どうじん）」）：ノーマル `light`／マトリックス `dark`（最初から）→ 25% 極光 `aurora`（既存。オーロラ）→ 50% つみきの空 `sakura`（`ToyBlocksBackground`。プログラムで描く）→ 75% おもちゃの雲 `inferno`（`ToylandVideoBackground`。動画）→ 100% 童神 `tenkuu`（`DoujinBackground`。ボス戦の待機動画＋演出）。
+  **内部ID（`settingsStore` の Theme・保存データ・CSS の `body[data-theme]`）は変えない**。表示名・見た目・色（`index.css` のトークン）・背景コンポーネントだけを入れかえた。ボス戦は `inferno`（おもちゃの雲）の解放で挑戦できる（`Hub.tsx`・`BossBattleModule.tsx`）。
+  動画は共通の置き場 `learning-media` の `videos/rippoutai/{boss,theme}/`（`boss`＝待機 idle・こうげき attack-normal / attack-special・poster、`theme`＝loop・poster）。480p・20fps・mp4＋webm。**置き場のファイルは上書きしない**（変えるときは新しい名前で足す）。
+  `ThemeVideo`（動画レイヤー）・`canvasLoop`（canvas を約30fps で動かす共通の部品）・`DoujinName`（「童」にふりがな）は `src/components/ui/`。背景を足す・直すときは、その3つを使う（動画は無音・タブが裏なら止める・「動きを減らす」では静止画）。
+
 ## 確かめ方
 - `npm run check`（学級ポータルのルール点検・型チェック・問題の機械検査・ビルド）
 - 共通ファイルを kit の版にそろえる: `npx learning-app-kit-platform fix`
